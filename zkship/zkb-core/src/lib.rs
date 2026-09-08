@@ -4,3 +4,5 @@
 //! cryptographic review and new vectors.
 
 #![forbid(unsafe_code)]
+
+pub mod params;
