@@ -2,3 +2,10 @@
 //! Security-critical reference implementation; not independently audited.
 
 #![forbid(unsafe_code)]
+
+pub mod codec;
+pub mod coin;
+pub mod frame;
+pub mod hello;
+pub mod identity;
+pub mod state;
