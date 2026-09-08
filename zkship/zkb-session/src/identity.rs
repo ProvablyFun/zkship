@@ -107,6 +107,12 @@ impl AuthenticatedPeer {
         &self.0
     }
 
+    /// For [`PeerAuthPolicy`] implementations only; never wrap a key learned from an
+    /// unauthenticated `Hello`.
+    pub fn from_policy_decision(key: PeerKey) -> AuthenticatedPeer {
+        AuthenticatedPeer(key)
+    }
+
     pub(crate) fn verify_strict(
         &self,
         message: &[u8],

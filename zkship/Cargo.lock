@@ -778,8 +778,10 @@ dependencies = [
 name = "zkb-cli"
 version = "0.1.0"
 dependencies = [
+ "curve25519-dalek",
  "rand 0.8.8",
  "rand_core 0.6.4",
+ "zeroize",
  "zkb-core",
  "zkb-session",
 ]
