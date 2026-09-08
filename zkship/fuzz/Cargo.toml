@@ -1,0 +1,60 @@
+[package]
+name = "zkb-fuzz"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+rand_core = "0.6"
+rand_chacha = "0.3"
+zkb-core = { path = "../zkb-core" }
+zkb-session = { path = "../zkb-session" }
+curve25519-dalek = { version = "4.1.3", default-features = false, features = [
+    "alloc",
+    "precomputed-tables",
+] }
+
+# `cargo fuzz build` needs nightly; plain `cargo check` works on stable.
+
+[[bin]]
+name = "wf_proof_decode"
+path = "fuzz_targets/wf_proof_decode.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "board_commitment_decode"
+path = "fuzz_targets/board_commitment_decode.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "answer_decode"
+path = "fuzz_targets/answer_decode.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "frame_decode"
+path = "fuzz_targets/frame_decode.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "hello_decode"
+path = "fuzz_targets/hello_decode.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "session_replay"
+path = "fuzz_targets/session_replay.rs"
+test = false
+doc = false
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }

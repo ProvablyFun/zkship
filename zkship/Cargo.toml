@@ -5,6 +5,8 @@ members = [
     "zkb-session",
     "zkb-cli",
 ]
+# fuzz/ needs nightly + sanitizers; kept out of the workspace.
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.1.0"
