@@ -64,10 +64,16 @@ impl fmt::Display for WfError {
                 write!(f, "got {actual} entry commitments, expected {expected}")
             }
             WfError::WrongCommitmentBytes { expected, actual } => {
-                write!(f, "entry commitment encoding is {actual} bytes, expected {expected}")
+                write!(
+                    f,
+                    "entry commitment encoding is {actual} bytes, expected {expected}"
+                )
             }
             WfError::InvalidPointEncoding { index } => {
-                write!(f, "entry commitment {index} is not a canonical Ristretto encoding")
+                write!(
+                    f,
+                    "entry commitment {index} is not a canonical Ristretto encoding"
+                )
             }
             WfError::WrongProofBytes { expected, actual } => {
                 write!(f, "proof encoding is {actual} bytes, expected {expected}")
@@ -152,6 +158,7 @@ impl UnverifiedBoardCommitment {
 
 /// Board commitment whose proof verified under the session context. Caches
 /// the C_i derived during verification for play-phase cell checks.
+#[cfg_attr(fuzzing, derive(Clone))]
 pub struct VerifiedBoardCommitment {
     entry_commitments: Vec<RistrettoPoint>,
     cell_commitments: [RistrettoPoint; N],
@@ -281,7 +288,12 @@ fn challenge(transcript: &mut Transcript) -> Scalar {
 
 /// Bit-instance openings: `(e_p, s_p)` for j < P; for j >= P the derived
 /// cell opening summed over the public support of cell j - P.
-fn cell_opening(geometry: &crate::params::Geometry, e: &[u8], s: &[Scalar], i: usize) -> (Scalar, Scalar) {
+fn cell_opening(
+    geometry: &crate::params::Geometry,
+    e: &[u8],
+    s: &[Scalar],
+    i: usize,
+) -> (Scalar, Scalar) {
     let cell = CellIndex::from_index(i as u8).expect("i < N");
     let support = geometry.support_of_cell(cell);
     let b: u64 = support.iter().map(|&p| u64::from(e[p])).sum();
@@ -422,8 +434,7 @@ pub fn verify(
         transcript.append_message(b"bit-cb", c_b.compress().as_bytes());
     }
     for (k, z_k) in proof.schnorr_responses.iter().enumerate() {
-        let r_hat =
-            RistrettoPoint::vartime_multiscalar_mul([z_k, &neg_x], [h, &block_sums[k]]);
+        let r_hat = RistrettoPoint::vartime_multiscalar_mul([z_k, &neg_x], [h, &block_sums[k]]);
         transcript.append_message(b"block-R", r_hat.compress().as_bytes());
     }
 
@@ -439,10 +450,11 @@ pub fn verify(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
     use rand::Rng;
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
-    use sha2::{Digest, Sha512_256};
+    use sha2::{Digest, Sha512, Sha512_256};
 
     const PROVER_ID: [u8; 32] = [0xA1; 32];
     const SID: [u8; 32] = [0x5D; 32];
@@ -484,8 +496,7 @@ mod tests {
         let params = Parameters::standard_v1();
         let e = fixed_placement();
         let s = fixed_blinders();
-        let (board, proof) =
-            prove_with_rng(params, &PROVER_ID, &SID, &e, &s, rng(0x77)).unwrap();
+        let (board, proof) = prove_with_rng(params, &PROVER_ID, &SID, &e, &s, rng(0x77)).unwrap();
 
         // Digest of E || proof for this fixed witness, context, and RNG.
         let mut hasher = Sha512_256::new();
@@ -493,11 +504,17 @@ mod tests {
         hasher.update(proof.encode());
         let digest: [u8; 32] = hasher.finalize().into();
         assert_eq!(
-            digest.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+            digest
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>(),
             "6e3ef00a8bf9108596929e80f14530a83c1fd23842e417c42e83f9e767861a71"
         );
         assert_eq!(proof.encode().len(), WfProof::ENCODED_LEN);
-        assert_eq!(board.to_bytes().len(), UnverifiedBoardCommitment::ENCODED_LEN);
+        assert_eq!(
+            board.to_bytes().len(),
+            UnverifiedBoardCommitment::ENCODED_LEN
+        );
 
         let decoded_proof = WfProof::decode(&proof.encode()).unwrap();
         assert_eq!(decoded_proof.encode(), proof.encode());
@@ -535,8 +552,12 @@ mod tests {
         let geometry = params.geometry();
         let s = fixed_blinders();
         let board = UnverifiedBoardCommitment::from_points(
-            e.iter().zip(&s).map(|(v, r)| pedersen::commit(params, v, r)).collect(),
-        ).unwrap();
+            e.iter()
+                .zip(&s)
+                .map(|(v, r)| pedersen::commit(params, v, r))
+                .collect(),
+        )
+        .unwrap();
         let mut transcript = statement_transcript(params, &PROVER_ID, &SID, &board.to_bytes());
         let mut random = rng(0x95);
         let mut bit_states = Vec::new();
@@ -546,8 +567,10 @@ mod tests {
             } else {
                 let cell = CellIndex::from_index((j - P) as u8).unwrap();
                 let support = geometry.support_of_cell(cell);
-                (support.iter().map(|&p| e[p]).sum::<Scalar>(),
-                 support.iter().map(|&p| s[p]).sum::<Scalar>())
+                (
+                    support.iter().map(|&p| e[p]).sum::<Scalar>(),
+                    support.iter().map(|&p| s[p]).sum::<Scalar>(),
+                )
             };
             if j >= P && corrupted_cell == Some(j - P) {
                 v = Scalar::ONE - v;
@@ -565,11 +588,20 @@ mod tests {
             block_states.push(state);
         }
         let x = challenge(&mut transcript);
-        (board, WfProof {
-            x,
-            bit_responses: bit_states.into_iter().map(|state| state.respond(&x)).collect(),
-            schnorr_responses: block_states.into_iter().map(|state| state.respond(&x)).collect(),
-        })
+        (
+            board,
+            WfProof {
+                x,
+                bit_responses: bit_states
+                    .into_iter()
+                    .map(|state| state.respond(&x))
+                    .collect(),
+                schnorr_responses: block_states
+                    .into_iter()
+                    .map(|state| state.respond(&x))
+                    .collect(),
+            },
+        )
     }
 
     #[test]
@@ -598,12 +630,22 @@ mod tests {
             ("nonbit q-1", nonbit_minus_one),
         ] {
             let (board, proof) = adversarial_proof(&witness, None);
-            assert!(matches!(verify(params, &PROVER_ID, &SID, &board, &proof),
-                Err(WfError::VerificationFailed)), "accepted {name}");
+            assert!(
+                matches!(
+                    verify(params, &PROVER_ID, &SID, &board, &proof),
+                    Err(WfError::VerificationFailed)
+                ),
+                "accepted {name}"
+            );
         }
         let (board, proof) = adversarial_proof(&legal, Some(0));
-        assert!(matches!(verify(params, &PROVER_ID, &SID, &board, &proof),
-            Err(WfError::VerificationFailed)), "accepted a false derived-cell opening");
+        assert!(
+            matches!(
+                verify(params, &PROVER_ID, &SID, &board, &proof),
+                Err(WfError::VerificationFailed)
+            ),
+            "accepted a false derived-cell opening"
+        );
     }
 
     #[test]
@@ -617,27 +659,37 @@ mod tests {
         e[420] = 1;
         assert!(matches!(
             prove(params, &PROVER_ID, &SID, &e, &s),
-            Err(WfError::IllegalPlacement(PlacementError::OverlappingShips { .. }))
+            Err(WfError::IllegalPlacement(
+                PlacementError::OverlappingShips { .. }
+            ))
         ));
 
         let e = vec![0u8; P];
         assert!(matches!(
             prove(params, &PROVER_ID, &SID, &e, &s),
-            Err(WfError::IllegalPlacement(PlacementError::BlockNotOneHot { block: 0, sum: 0 }))
+            Err(WfError::IllegalPlacement(PlacementError::BlockNotOneHot {
+                block: 0,
+                sum: 0
+            }))
         ));
 
         let mut e = fixed_placement();
         e[581] = 1;
         assert!(matches!(
             prove(params, &PROVER_ID, &SID, &e, &s),
-            Err(WfError::IllegalPlacement(PlacementError::BlockNotOneHot { block: 4, sum: 2 }))
+            Err(WfError::IllegalPlacement(PlacementError::BlockNotOneHot {
+                block: 4,
+                sum: 2
+            }))
         ));
 
         let mut e = fixed_placement();
         e[7] = 2;
         assert!(matches!(
             prove(params, &PROVER_ID, &SID, &e, &s),
-            Err(WfError::IllegalPlacement(PlacementError::NonBitEntry { .. }))
+            Err(WfError::IllegalPlacement(
+                PlacementError::NonBitEntry { .. }
+            ))
         ));
 
         let e = fixed_placement();
@@ -650,9 +702,15 @@ mod tests {
     #[test]
     fn decode_rejects_structurally_bad_input_without_panicking() {
         let params = Parameters::standard_v1();
-        let (board, proof) =
-            prove_with_rng(params, &PROVER_ID, &SID, &fixed_placement(), &fixed_blinders(), rng(0x77))
-                .unwrap();
+        let (board, proof) = prove_with_rng(
+            params,
+            &PROVER_ID,
+            &SID,
+            &fixed_placement(),
+            &fixed_blinders(),
+            rng(0x77),
+        )
+        .unwrap();
         let proof_bytes = proof.encode();
         let board_bytes = board.to_bytes();
 
@@ -686,7 +744,9 @@ mod tests {
         ));
 
         assert!(matches!(
-            UnverifiedBoardCommitment::from_bytes(&board_bytes[..UnverifiedBoardCommitment::ENCODED_LEN - 1]),
+            UnverifiedBoardCommitment::from_bytes(
+                &board_bytes[..UnverifiedBoardCommitment::ENCODED_LEN - 1]
+            ),
             Err(WfError::WrongCommitmentBytes { .. })
         ));
         let mut long = board_bytes.clone();
@@ -710,16 +770,23 @@ mod tests {
     #[test]
     fn tampered_proofs_and_contexts_are_rejected() {
         let params = Parameters::standard_v1();
-        let (board, proof) =
-            prove_with_rng(params, &PROVER_ID, &SID, &fixed_placement(), &fixed_blinders(), rng(0x77))
-                .unwrap();
+        let (board, proof) = prove_with_rng(
+            params,
+            &PROVER_ID,
+            &SID,
+            &fixed_placement(),
+            &fixed_blinders(),
+            rng(0x77),
+        )
+        .unwrap();
 
-        let reject = |board: &UnverifiedBoardCommitment, proof: &WfProof, id: &[u8; 32], sid: &[u8; 32]| {
-            assert!(matches!(
-                verify(params, id, sid, board, proof),
-                Err(WfError::VerificationFailed)
-            ));
-        };
+        let reject =
+            |board: &UnverifiedBoardCommitment, proof: &WfProof, id: &[u8; 32], sid: &[u8; 32]| {
+                assert!(matches!(
+                    verify(params, id, sid, board, proof),
+                    Err(WfError::VerificationFailed)
+                ));
+            };
 
         let mut p = WfProof::decode(&proof.encode()).unwrap();
         p.x += Scalar::ONE;
@@ -742,6 +809,15 @@ mod tests {
 
         reject(&board, &proof, &PROVER_ID, &[0xEE; 32]);
         reject(&board, &proof, &[0xEE; 32], &SID);
+
+        // Canonical pp bytes are bound into the transcript.
+        let other_h =
+            RistrettoPoint::hash_from_bytes::<Sha512>(b"zkbattleship/test-only/wf-tamper-H");
+        let other_params = Parameters::from_test_generators(RISTRETTO_BASEPOINT_POINT, other_h);
+        assert!(matches!(
+            verify(&other_params, &PROVER_ID, &SID, &board, &proof),
+            Err(WfError::VerificationFailed)
+        ));
 
         let (board2, _) = prove_with_rng(
             params,

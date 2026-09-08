@@ -5,9 +5,14 @@
 
 #![forbid(unsafe_code)]
 
+pub mod game;
+pub mod openings;
 pub mod params;
 pub mod pedersen;
 pub mod sigma;
 pub mod wf;
-pub mod openings;
-pub mod game;
+
+#[cfg(test)]
+mod coupling_tests;
+#[cfg(test)]
+mod game_proptest;
