@@ -6,3 +6,5 @@
 #![forbid(unsafe_code)]
 
 pub mod params;
+pub mod pedersen;
+pub mod sigma;
