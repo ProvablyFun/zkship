@@ -13,19 +13,17 @@
 
 use crate::codec::{CodecError, MessageType, COMMIT_ENTRY_LEN};
 use crate::coin;
-use crate::frame::{
-    self, AuthenticatedFrame, ChainError, ChainExpectation, SignedFrame,
-};
+use crate::frame::{self, AuthenticatedFrame, ChainError, ChainExpectation, SignedFrame};
 use crate::identity::{AuthenticatedPeer, IdentityKeypair};
 use curve25519_dalek::ristretto::RistrettoPoint;
 use curve25519_dalek::scalar::Scalar;
-use rand_core::{CryptoRng, RngCore};
+use rand_core::{CryptoRng, OsRng, RngCore};
 use std::fmt;
+use zeroize::Zeroizing;
 use zkb_core::game::{Game, GameError, Role, ShotOutcome, State as GameState};
 use zkb_core::openings::{AnswerDecodeError, AnswerRejection, ShotAnswer};
 use zkb_core::params::{CellIndex, Parameters, P};
 use zkb_core::wf::{self, UnverifiedBoardCommitment, VerifiedBoardCommitment, WfError, WfProof};
-use zeroize::Zeroizing;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClassBReason {
@@ -44,7 +42,9 @@ impl fmt::Display for ClassBReason {
             ClassBReason::WrongSequence { expected, actual } => {
                 write!(f, "frame sequence {actual}, expected {expected}")
             }
-            ClassBReason::WrongPrevHash => write!(f, "frame prev_hash does not match the chain head"),
+            ClassBReason::WrongPrevHash => {
+                write!(f, "frame prev_hash does not match the chain head")
+            }
             ClassBReason::BadSignature => write!(f, "frame signature does not verify"),
         }
     }
@@ -69,7 +69,10 @@ impl fmt::Display for Violation {
                 write!(f, "frame claims impossible sender-role byte {claimed}")
             }
             Violation::UnexpectedMessage { message_type } => {
-                write!(f, "unexpected {message_type:?} in the current session state")
+                write!(
+                    f,
+                    "unexpected {message_type:?} in the current session state"
+                )
             }
             Violation::OutOfTurnResign => write!(f, "out-of-turn resign"),
             Violation::InvalidCommit(e) => write!(f, "invalid commit: {e}"),
@@ -101,7 +104,9 @@ impl fmt::Display for SessionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SessionError::ClassB(e) => write!(f, "class-B input: {e}"),
-            SessionError::Attributable(e) => write!(f, "attributable peer violation: {}", e.violation),
+            SessionError::Attributable(e) => {
+                write!(f, "attributable peer violation: {}", e.violation)
+            }
             SessionError::InternalInvariant(m) => write!(f, "internal invariant failure: {m}"),
             SessionError::WrongLocalState(m) => write!(f, "wrong local state: {m}"),
             SessionError::LocalGame(e) => write!(f, "invalid local game data: {e}"),
@@ -140,6 +145,8 @@ struct ChainHead {
 }
 
 #[derive(Default)]
+// Clone only for the fuzz harness's verified-fixture snapshots.
+#[cfg_attr(fuzzing, derive(Clone))]
 struct OwnBoard {
     entry_commitments: Option<Vec<RistrettoPoint>>,
     e: Option<Zeroizing<Vec<u8>>>,
@@ -152,6 +159,7 @@ impl OwnBoard {
     }
 }
 
+#[cfg_attr(fuzzing, derive(Clone))]
 struct CommitPhase {
     a_done: bool,
     b_done: bool,
@@ -166,6 +174,7 @@ enum CoinStep {
     Reveal,
 }
 
+#[cfg_attr(fuzzing, derive(Clone))]
 struct CoinPhase<'a> {
     step: CoinStep,
     coin_commit: Option<[u8; 32]>,
@@ -176,6 +185,7 @@ struct CoinPhase<'a> {
     game: Option<Game<'a>>,
 }
 
+#[cfg_attr(fuzzing, derive(Clone))]
 enum Phase<'a> {
     Commit(Box<CommitPhase>),
     Coin(Box<CoinPhase<'a>>),
@@ -196,6 +206,7 @@ enum Transition {
 }
 
 /// One local player's view.
+#[cfg_attr(fuzzing, derive(Clone))]
 pub struct Session<'a> {
     params: &'a Parameters,
     keypair: &'a IdentityKeypair,
@@ -256,8 +267,16 @@ fn build_game<'a>(
     let mut s = own.s.take().expect("witness present until game build");
     let entry = own.entry_commitments.take().expect("local commit produced");
     let peer = peer_verified.take().expect("peer commit verified");
-    Game::new(params, local_role, first_mover, entry, std::mem::take(&mut *e), std::mem::take(&mut *s), peer)
-        .map_err(|_| SessionError::InternalInvariant("validated board could not initialize game"))
+    Game::new(
+        params,
+        local_role,
+        first_mover,
+        entry,
+        std::mem::take(&mut *e),
+        std::mem::take(&mut *s),
+        peer,
+    )
+    .map_err(|_| SessionError::InternalInvariant("validated board could not initialize game"))
 }
 
 impl<'a> Session<'a> {
@@ -361,7 +380,10 @@ impl<'a> Session<'a> {
     }
 
     fn abort_on_failure<T>(&mut self, result: &Result<T, SessionError>) {
-        if matches!(result, Err(SessionError::Attributable(_) | SessionError::InternalInvariant(_))) {
+        if matches!(
+            result,
+            Err(SessionError::Attributable(_) | SessionError::InternalInvariant(_))
+        ) {
             self.abort();
         }
     }
@@ -417,7 +439,8 @@ impl<'a> Session<'a> {
         };
         if let Some(game) = &mut game {
             if !matches!(game.state(), GameState::Finished { .. }) {
-                game.finish_by_forfeit(winner).expect("live game can finish by forfeit");
+                game.finish_by_forfeit(winner)
+                    .expect("live game can finish by forfeit");
             }
         }
         self.phase = Phase::Finished { winner, game };
@@ -428,6 +451,25 @@ impl<'a> Session<'a> {
     pub fn produce<R: RngCore + CryptoRng>(
         &mut self,
         rng: &mut R,
+    ) -> Result<Option<SignedFrame>, SessionError> {
+        self.produce_with_rng(rng, OsRng)
+    }
+
+    /// Injected proof-finalization RNG, for deterministic vectors only; never in production.
+    pub fn produce_with_rng<R: RngCore + CryptoRng, F: RngCore + CryptoRng>(
+        &mut self,
+        rng: &mut R,
+        proof_finalize_rng: F,
+    ) -> Result<Option<SignedFrame>, SessionError> {
+        let result = self.produce_inner(rng, proof_finalize_rng);
+        self.abort_on_failure(&result);
+        result
+    }
+
+    fn produce_inner<R: RngCore + CryptoRng, F: RngCore + CryptoRng>(
+        &mut self,
+        rng: &mut R,
+        proof_finalize_rng: F,
     ) -> Result<Option<SignedFrame>, SessionError> {
         let commit_turn = matches!(&self.phase, Phase::Commit(cp) if {
             let expected = if cp.a_done { Role::B } else { Role::A };
@@ -440,12 +482,13 @@ impl<'a> Session<'a> {
                 };
                 let e = cp.own.e.as_ref().expect("witness present");
                 let s = cp.own.s.as_ref().expect("witness present");
-                wf::prove(
+                wf::prove_with_rng(
                     self.params,
                     self.keypair.peer_key().as_bytes(),
                     &self.sid,
                     e,
                     s.as_slice(),
+                    proof_finalize_rng,
                 )
                 .map_err(|_| {
                     SessionError::InternalInvariant("local prover refused its validated witness")
@@ -587,7 +630,10 @@ impl<'a> Session<'a> {
         })?;
         let claimed = frame.frame().header().sender_role;
         if claimed != frame::role_to_byte(self.local_role.other()) {
-            return Err(attributable(frame, Violation::SenderRoleMismatch { claimed }));
+            return Err(attributable(
+                frame,
+                Violation::SenderRoleMismatch { claimed },
+            ));
         }
         self.accept_authenticated(frame)
     }
@@ -623,7 +669,13 @@ impl<'a> Session<'a> {
                 let verified = (|| -> Result<VerifiedBoardCommitment, WfError> {
                     let board = UnverifiedBoardCommitment::from_bytes(entry_bytes)?;
                     let proof = WfProof::decode(proof_bytes)?;
-                    wf::verify(self.params, self.peer.key().as_bytes(), &self.sid, &board, &proof)
+                    wf::verify(
+                        self.params,
+                        self.peer.key().as_bytes(),
+                        &self.sid,
+                        &board,
+                        &proof,
+                    )
                 })();
                 let verified = match verified {
                     Ok(v) => v,
@@ -687,8 +739,11 @@ impl<'a> Session<'a> {
                     if !coin::verify_reveal(&self.sid, commitment, &r_a) {
                         return Err(attributable(frame, Violation::BadCoinReveal));
                     }
-                    let first_mover =
-                        coin::first_mover(&self.sid, &r_a, cp.r_b.as_ref().expect("nonce received"));
+                    let first_mover = coin::first_mover(
+                        &self.sid,
+                        &r_a,
+                        cp.r_b.as_ref().expect("nonce received"),
+                    );
                     let game = build_game(
                         self.params,
                         self.local_role,
@@ -720,9 +775,9 @@ impl<'a> Session<'a> {
                         return Err(attributable(frame, Violation::InvalidShot(e)));
                     }
                     let cell = CellIndex::from_index(cell_byte).expect("accepted shot is in range");
-                    let answer = game
-                        .answer_shot()
-                        .map_err(|_| SessionError::InternalInvariant("answer owed but not producible"))?;
+                    let answer = game.answer_shot().map_err(|_| {
+                        SessionError::InternalInvariant("answer owed but not producible")
+                    })?;
                     // Conceding the T-th hit finishes the defender here; the Answer is the final frame.
                     let winner = match game.state() {
                         GameState::Finished { winner } => Some(winner),
@@ -880,7 +935,16 @@ mod tests {
         let mut e = placement_a();
         e[581] = 1; // two selected positions in block 4
         assert!(matches!(
-            Session::new(params, &ka, Role::A, auth(&kb), SID, GENESIS, e, blinders(1)),
+            Session::new(
+                params,
+                &ka,
+                Role::A,
+                auth(&kb),
+                SID,
+                GENESIS,
+                e,
+                blinders(1)
+            ),
             Err(SessionError::LocalGame(GameError::IllegalPlacement(_)))
         ));
         assert!(matches!(
@@ -894,7 +958,9 @@ mod tests {
                 placement_a(),
                 blinders(1)[..P - 1].to_vec()
             ),
-            Err(SessionError::LocalGame(GameError::WrongWitnessLength { .. }))
+            Err(SessionError::LocalGame(
+                GameError::WrongWitnessLength { .. }
+            ))
         ));
     }
 
@@ -904,14 +970,21 @@ mod tests {
         let kb = keypair(2);
         let mut sb = session(&kb, Role::B, &ka);
         let bad = SignedFrame::craft(&ka, &SID, Role::A, 1, MessageType::Shot, &GENESIS, vec![0]);
-        assert!(matches!(sb.accept(bad.bytes()), Err(SessionError::Attributable(_))));
+        assert!(matches!(
+            sb.accept(bad.bytes()),
+            Err(SessionError::Attributable(_))
+        ));
         assert!(sb.is_aborted());
         assert!(matches!(sb.phase, Phase::Aborted)); // OwnBoard was dropped.
         assert_eq!(sb.expected_sender(), None);
         assert_eq!(sb.head_sequence(), 0);
         assert!(sb.transcript().is_empty());
-        let corrected = SignedFrame::craft(&ka, &SID, Role::A, 1, MessageType::Resign, &GENESIS, vec![]);
-        assert!(matches!(sb.accept(corrected.bytes()), Err(SessionError::WrongLocalState(_))));
+        let corrected =
+            SignedFrame::craft(&ka, &SID, Role::A, 1, MessageType::Resign, &GENESIS, vec![]);
+        assert!(matches!(
+            sb.accept(corrected.bytes()),
+            Err(SessionError::WrongLocalState(_))
+        ));
         assert!(sb.produce(&mut rng(1)).unwrap().is_none());
         assert!(matches!(sb.resign(), Err(SessionError::WrongLocalState(_))));
     }
@@ -921,9 +994,14 @@ mod tests {
         let ka = keypair(1);
         let kb = keypair(2);
         let mut sa = session(&ka, Role::A, &kb);
-        let Phase::Commit(cp) = &mut sa.phase else { unreachable!() };
+        let Phase::Commit(cp) = &mut sa.phase else {
+            unreachable!()
+        };
         cp.own.e.as_mut().unwrap()[0] = 0;
-        assert!(matches!(sa.produce(&mut rng(1)), Err(SessionError::InternalInvariant(_))));
+        assert!(matches!(
+            sa.produce(&mut rng(1)),
+            Err(SessionError::InternalInvariant(_))
+        ));
         assert!(matches!(sa.phase, Phase::Aborted));
         assert_eq!(sa.expected_sender(), None);
         assert_eq!(sa.winner(), None);
@@ -965,14 +1043,18 @@ mod tests {
                     (&mut sb, reveal)
                 }
             };
-            let Phase::Coin(cp) = &mut failed.phase else { unreachable!() };
+            let Phase::Coin(cp) = &mut failed.phase else {
+                unreachable!()
+            };
             // Corrupt the validated witness: the game handoff must fail terminally.
             cp.own.e.as_mut().unwrap()[0] = 0;
             let previous_head = *failed.head_hash();
             let previous_sequence = failed.head_sequence();
             assert!(matches!(
                 failed.accept(incoming.bytes()),
-                Err(SessionError::InternalInvariant("validated board could not initialize game"))
+                Err(SessionError::InternalInvariant(
+                    "validated board could not initialize game"
+                ))
             ));
             assert!(matches!(failed.phase, Phase::Aborted));
             assert!(failed.game().is_none());
@@ -980,8 +1062,14 @@ mod tests {
             assert_eq!(failed.head_sequence(), previous_sequence);
             assert_eq!(*failed.head_hash(), previous_head);
             assert!(failed.produce(&mut entropy).unwrap().is_none());
-            assert!(matches!(failed.accept(incoming.bytes()), Err(SessionError::WrongLocalState(_))));
-            assert!(matches!(failed.resign(), Err(SessionError::WrongLocalState(_))));
+            assert!(matches!(
+                failed.accept(incoming.bytes()),
+                Err(SessionError::WrongLocalState(_))
+            ));
+            assert!(matches!(
+                failed.resign(),
+                Err(SessionError::WrongLocalState(_))
+            ));
         }
     }
 
@@ -1004,7 +1092,10 @@ mod tests {
         assert!(sa.game().is_some());
         let resignation = sa.resign().unwrap();
         sb.accept(resignation.bytes()).unwrap();
-        assert_eq!(sa.game().unwrap().state(), GameState::Finished { winner: Role::B });
+        assert_eq!(
+            sa.game().unwrap().state(),
+            GameState::Finished { winner: Role::B }
+        );
         assert_eq!(sa.head_hash(), sb.head_hash());
         assert_eq!(sa.winner(), Some(Role::B));
         assert_eq!(sb.winner(), Some(Role::B));
@@ -1016,7 +1107,8 @@ mod tests {
         let kb = keypair(2);
         // A owes the first commit, so a Resign from B is out of turn.
         let mut sa = session(&ka, Role::A, &kb);
-        let frame = SignedFrame::craft(&kb, &SID, Role::B, 1, MessageType::Resign, &GENESIS, vec![]);
+        let frame =
+            SignedFrame::craft(&kb, &SID, Role::B, 1, MessageType::Resign, &GENESIS, vec![]);
         match sa.accept(frame.bytes()) {
             Err(SessionError::Attributable(v)) => {
                 assert!(matches!(v.violation, Violation::OutOfTurnResign));
@@ -1027,10 +1119,7 @@ mod tests {
         let kb2 = keypair(3);
         let ka2 = keypair(4);
         let mut sb = session(&kb2, Role::B, &ka2);
-        assert!(matches!(
-            sb.resign(),
-            Err(SessionError::WrongLocalState(_))
-        ));
+        assert!(matches!(sb.resign(), Err(SessionError::WrongLocalState(_))));
     }
 
     #[test]
@@ -1038,7 +1127,8 @@ mod tests {
         let ka = keypair(1);
         let kb = keypair(2);
         let mut sb = session(&kb, Role::B, &ka);
-        let frame = SignedFrame::craft(&ka, &SID, Role::A, 1, MessageType::Resign, &GENESIS, vec![]);
+        let frame =
+            SignedFrame::craft(&ka, &SID, Role::A, 1, MessageType::Resign, &GENESIS, vec![]);
         assert!(matches!(
             sb.accept(frame.bytes()),
             Ok(AcceptOutcome::PeerResigned)
@@ -1061,23 +1151,48 @@ mod tests {
         let kb = keypair(2);
         let mut sb = session(&kb, Role::B, &ka);
 
-        let frame = SignedFrame::craft(&ka, &[0xEE; 32], Role::A, 1, MessageType::Resign, &GENESIS, vec![]);
+        let frame = SignedFrame::craft(
+            &ka,
+            &[0xEE; 32],
+            Role::A,
+            1,
+            MessageType::Resign,
+            &GENESIS,
+            vec![],
+        );
         assert!(matches!(
             sb.accept(frame.bytes()),
             Err(SessionError::ClassB(ClassBReason::WrongSession))
         ));
-        let frame = SignedFrame::craft(&ka, &SID, Role::A, 5, MessageType::Resign, &GENESIS, vec![]);
+        let frame =
+            SignedFrame::craft(&ka, &SID, Role::A, 5, MessageType::Resign, &GENESIS, vec![]);
         assert!(matches!(
             sb.accept(frame.bytes()),
             Err(SessionError::ClassB(ClassBReason::WrongSequence { .. }))
         ));
-        let frame = SignedFrame::craft(&ka, &SID, Role::A, 1, MessageType::Resign, &[0xEE; 32], vec![]);
+        let frame = SignedFrame::craft(
+            &ka,
+            &SID,
+            Role::A,
+            1,
+            MessageType::Resign,
+            &[0xEE; 32],
+            vec![],
+        );
         assert!(matches!(
             sb.accept(frame.bytes()),
             Err(SessionError::ClassB(ClassBReason::WrongPrevHash))
         ));
         let stranger = keypair(9);
-        let frame = SignedFrame::craft(&stranger, &SID, Role::A, 1, MessageType::Resign, &GENESIS, vec![]);
+        let frame = SignedFrame::craft(
+            &stranger,
+            &SID,
+            Role::A,
+            1,
+            MessageType::Resign,
+            &GENESIS,
+            vec![],
+        );
         assert!(matches!(
             sb.accept(frame.bytes()),
             Err(SessionError::ClassB(ClassBReason::BadSignature))
@@ -1089,7 +1204,10 @@ mod tests {
         assert!(!sb.is_aborted());
         assert_eq!(sb.expected_sender(), Some(Role::A));
         let next = SignedFrame::craft(&ka, &SID, Role::A, 1, MessageType::Resign, &GENESIS, vec![]);
-        assert!(matches!(sb.accept(next.bytes()), Ok(AcceptOutcome::PeerResigned)));
+        assert!(matches!(
+            sb.accept(next.bytes()),
+            Ok(AcceptOutcome::PeerResigned)
+        ));
     }
 
     #[test]
@@ -1099,7 +1217,15 @@ mod tests {
 
         let mut sb = session(&kb, Role::B, &ka);
         let payload = vec![0xFF; crate::codec::COMMIT_PAYLOAD_LEN];
-        let frame = SignedFrame::craft(&ka, &SID, Role::A, 1, MessageType::Commit, &GENESIS, payload);
+        let frame = SignedFrame::craft(
+            &ka,
+            &SID,
+            Role::A,
+            1,
+            MessageType::Commit,
+            &GENESIS,
+            payload,
+        );
         match sb.accept(frame.bytes()) {
             Err(SessionError::Attributable(v)) => {
                 assert!(matches!(v.violation, Violation::InvalidCommit(_)));
@@ -1111,13 +1237,19 @@ mod tests {
         let frame = SignedFrame::craft(&ka, &SID, Role::A, 1, MessageType::Shot, &GENESIS, vec![0]);
         match sb.accept(frame.bytes()) {
             Err(SessionError::Attributable(v)) => {
-                assert!(matches!(v.violation, Violation::UnexpectedMessage { message_type: MessageType::Shot }));
+                assert!(matches!(
+                    v.violation,
+                    Violation::UnexpectedMessage {
+                        message_type: MessageType::Shot
+                    }
+                ));
             }
             other => panic!("expected attributable unexpected message, got {other:?}"),
         }
 
         let mut sb = session(&kb, Role::B, &ka);
-        let frame = SignedFrame::craft(&ka, &SID, Role::B, 1, MessageType::Resign, &GENESIS, vec![]);
+        let frame =
+            SignedFrame::craft(&ka, &SID, Role::B, 1, MessageType::Resign, &GENESIS, vec![]);
         match sb.accept(frame.bytes()) {
             Err(SessionError::Attributable(v)) => {
                 assert!(matches!(v.violation, Violation::SenderRoleMismatch { .. }));
@@ -1137,8 +1269,10 @@ mod tests {
 
         let hello_a = hello::Hello::create(&ka, params_id, &mut rng);
         let hello_b = hello::Hello::create(&kb, params_id, &mut rng);
-        let checked_a = hello::check_hello(hello_a, &params_id, &ExpectedKey::new(ka.peer_key())).unwrap();
-        let checked_b = hello::check_hello(hello_b, &params_id, &ExpectedKey::new(kb.peer_key())).unwrap();
+        let checked_a =
+            hello::check_hello(hello_a, &params_id, &ExpectedKey::new(ka.peer_key())).unwrap();
+        let checked_b =
+            hello::check_hello(hello_b, &params_id, &ExpectedKey::new(kb.peer_key())).unwrap();
         let bootstrap = hello::complete_bootstrap(checked_a, checked_b).unwrap();
         let sid = *bootstrap.sid();
         let genesis = *bootstrap.genesis_hash();
@@ -1256,7 +1390,17 @@ mod tests {
         assert_eq!(resigner.expected_sender(), None);
         assert!(other.game().is_some());
         assert!(resigner.game().is_some());
-        assert_eq!(other.game().unwrap().state(), GameState::Finished { winner: current.other() });
-        assert_eq!(resigner.game().unwrap().state(), GameState::Finished { winner: current.other() });
+        assert_eq!(
+            other.game().unwrap().state(),
+            GameState::Finished {
+                winner: current.other()
+            }
+        );
+        assert_eq!(
+            resigner.game().unwrap().state(),
+            GameState::Finished {
+                winner: current.other()
+            }
+        );
     }
 }

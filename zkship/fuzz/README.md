@@ -9,9 +9,11 @@
 | `answer_decode` | `ShotAnswer::decode` (`b`-implied 33/165-byte lengths) |
 | `frame_decode` | `SignedFrame::decode` (size bounds, header/actual length consistency, per-type payload rules) |
 | `hello_decode` | `Hello::decode` and `check_hello` with attacker-shaped key/nonce/signature bytes |
-| `session_replay` | a live `Session::accept` fed arbitrary bytes: structural decode, chain gate, class-B rejections |
+| `session_replay` | two real sessions through commit/coin/play; replay, signed invalid state events and answer mutations; unchanged state on class-B input |
 
 - Decoder targets apply up to 256 sparse writes to exact-length fixtures: each 4-byte instruction is a 24-bit LE offset plus one byte, so small inputs reach late fields.
+- `session_replay`: byte 0 = valid setup frames (0 to 5), byte 1 = honest exchanges (0 to 199), then 3-byte adversarial instructions (at most 16).
+- Under `cfg(fuzzing)` verified setup/play prefixes are cached via `Clone`; mutated frames still pass ordinary signature/proof verification.
 - The frame decoder's unit tests pin the wasm32 case: the declared payload length is never added to header+signature sizes (usize overflow on 32-bit).
 
 ## Running
