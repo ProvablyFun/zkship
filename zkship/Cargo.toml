@@ -1,0 +1,44 @@
+[workspace]
+resolver = "2"
+members = [
+    "zkb-core",
+    "zkb-session",
+    "zkb-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.85"
+
+# Crypto major-version bumps are security-relevant: re-run vectors, negative and timing tests.
+[workspace.dependencies]
+zkb-core = { path = "zkb-core" }
+zkb-session = { path = "zkb-session" }
+
+curve25519-dalek = { version = "4.1.3", default-features = false, features = [
+    "alloc",
+    "precomputed-tables",
+    "digest",
+    "rand_core",
+    "zeroize",
+] }
+merlin = "3"
+sha2 = "0.10"
+rand_core = { version = "0.6", features = ["getrandom"] }
+ed25519-dalek = { version = "2", default-features = false, features = [
+    "alloc",
+    "rand_core",
+    "zeroize",
+] }
+zeroize = { version = "1", features = ["derive"] }
+subtle = "2.6"
+
+proptest = "1"
+rand = "0.8"
+rand_chacha = "0.3"
+
+[profile.release]
+debug-assertions = false
+overflow-checks = true

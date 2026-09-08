@@ -1,0 +1,16 @@
+[package]
+name = "zkb-cli"
+description = "Zero-Knowledge Battleship: two-process CLI reference demo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+zkb-core.workspace = true
+zkb-session.workspace = true
+rand_core.workspace = true
+rand.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"

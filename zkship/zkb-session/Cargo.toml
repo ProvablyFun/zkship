@@ -1,0 +1,28 @@
+[package]
+name = "zkb-session"
+description = "Zero-Knowledge Battleship: session layer (canonical wire codec, Ed25519 identity, bootstrap, signed frame chain, coin flip, session state)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+zkb-core.workspace = true
+curve25519-dalek.workspace = true
+sha2.workspace = true
+rand_core.workspace = true
+ed25519-dalek.workspace = true
+zeroize.workspace = true
+
+# wasm32: OsRng/getrandom needs the WebCrypto backend.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+
+[dev-dependencies]
+proptest.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
