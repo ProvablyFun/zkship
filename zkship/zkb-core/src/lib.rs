@@ -8,3 +8,4 @@
 pub mod params;
 pub mod pedersen;
 pub mod sigma;
+pub mod wf;
