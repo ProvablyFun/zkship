@@ -1,5 +1,4 @@
 # zkship monorepo
 
-This monorepo contains:
-- `zkship/`: Rust workspace (To Be Done)
+- `zkship/`: Rust workspace, the ZK Battleship reference implementation (see `zkship/README.md`)
 - `zkship.com/`: Website (To Be Done)
