@@ -1,0 +1,655 @@
+\documentclass[11pt]{article}
+\usepackage[letterpaper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+
+\newtheorem{lemma}{Lemma}[section]
+\newtheorem{theorem}[lemma]{Theorem}
+\newtheorem{corollary}[lemma]{Corollary}
+\newtheorem{definition}[lemma]{Definition}
+\newtheorem{construction}[lemma]{Construction}
+\theoremstyle{remark}
+\newtheorem{remark}[lemma]{Remark}
+
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\G}{\mathbb{G}}
+\newcommand{\Com}{\operatorname{Com}}
+\newcommand{\supp}{\operatorname{supp}}
+\newcommand{\Adv}{\operatorname{Adv}}
+\newcommand{\Exp}{\operatorname{Exp}}
+\newcommand{\NI}{\operatorname{NI}}
+\newcommand{\Sim}{\operatorname{Sim}}
+\newcommand{\Ext}{\operatorname{Ext}}
+\newcommand{\stmt}{\mathsf{stmt}}
+\newcommand{\ctx}{\mathsf{ctx}}
+\newcommand{\sid}{\mathsf{sid}}
+\newcommand{\id}{\mathsf{id}}
+\newcommand{\pp}{\mathsf{pp}}
+\newcommand{\cells}{\operatorname{cells}}
+\newcommand{\bitsigma}{\Sigma_{\mathrm{bit}}}
+\newcommand{\wfsigma}{\Sigma_{\mathrm{wf}}}
+\newcommand{\wfpi}{\Pi_{\mathrm{wf}}}
+\newcommand{\bspi}{\Pi_{\mathrm{BS}}}
+
+\title{Zero-Knowledge Battleship from Pedersen Commitments\\and Bit-Range Proofs}
+\author{}
+\date{September 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We design a two-party protocol for Battleship in which each player commits to a fleet placement, proves in zero knowledge that the placement is legal, and answers shots by opening commitments, with no trusted party and no on-chain component. The starting point is the obvious one: commit to the board as a bit string under Pedersen commitments and prove legality with range proofs. Bit-ness and the ship count are range statements, but the requirement that the ones decompose into non-overlapping ships of prescribed lengths is not linear in the cell bits. We resolve this by committing instead to a one-hot placement vector for each ship over the finite set of that ship's legal positions. Cell occupancy is then a public linear image of the placement vectors, so every legality condition, including non-overlap, becomes a bit-range proof or an opening of a homomorphic combination of commitments. The same structure carries the whole game: every message after the commitment is a linear opening of the placement commitment, which gives one-line reductions for soundness (to binding) and privacy (to a coupling of commitment randomness). We prove correctness, board-binding under the discrete logarithm assumption in the random oracle model, and perfect privacy against unbounded opponents, and give concrete costs for the standard $10\times 10$ game.
+\end{abstract}
+
+\section{Introduction}
+Battleship is played on two hidden boards. Each player arranges a fleet of ships on an $n\times n$ grid, the players alternate naming cells, the owner of the named cell reports whether it is occupied, and the first player to hit every cell of the opposing fleet wins. Without a referee the game has two integrity gaps. A player can place ships illegally, or not commit to a placement at all and decide after the fact which calls to report as hits. And a player can lie about individual cells. The remedy is standard in outline: commit to the board before play, prove in zero knowledge that the committed board is legal, and open cells as they are called.
+
+The instantiation we start from encodes the board as a bit string $\mathbf b\in\{0,1\}^{n^2}$, commits to each bit with a Pedersen commitment, and uses range proofs for legality. Two of the three legality conditions fit this exactly. That each $b_i$ is a bit is a range proof for the interval $[0,2)$. That $\mathbf b$ has the prescribed number of ones is an opening of the homomorphic product of all cell commitments. The third condition, that the ones decompose into straight contiguous segments of the prescribed lengths with no two overlapping, does not fit. It is not linear in $\mathbf b$, and it is not a condition that $\mathbf b$ carries enough information to check by counting and fitting: the bit string does not record which ship owns which cell, and non-overlap is a statement about ownership (Remark~\ref{rem:cells-not-enough}).
+
+Our design changes what is committed. For each ship we commit to a one-hot vector over the finite set of that ship's legal positions. The occupancy of a cell is then a public linear function of the placement vectors, namely the number of ships whose chosen position covers the cell, and anyone can compute a Pedersen commitment to it from the placement commitments alone. Legality becomes three statements of the kind Pedersen commitments and bit-range proofs express natively: the placement vectors are binary, each has exactly one nonzero entry, and the derived occupancy values are binary. The last of these is non-overlap. Shape, orientation and board boundaries are enforced by the enumeration of positions and cost nothing to prove, and the count of occupied cells follows.
+
+The same structure carries the rest of the game. After the commitment, every message a player sends about their own board is a linear opening of the placement commitment, meaning the pair $(\langle\mathbf w,\mathbf e\rangle,\langle\mathbf w,\mathbf s\rangle)$ for a public vector $\mathbf w$ determined by the game state, where $\mathbf e$ is the placement vector and $\mathbf s$ its commitment randomness. Answering a shot is a linear opening at a row of the incidence matrix. Announcing that a ship has been sunk, which the standard rules require, is a linear opening at an indicator of the positions contained in the cells shot so far. Soundness of every such message reduces to the binding property of Pedersen commitments, and privacy of every such message to one coupling argument on the randomness. The well-formedness proof is a parallel composition of the Groth--Kohlweiss bit protocol~\cite{groth-kohlweiss} with Schnorr proofs~\cite{schnorr}, made non-interactive with Fiat--Shamir~\cite{fiat-shamir}. It is perfectly witness indistinguishable, which is the property the privacy argument uses.
+
+We prove four statements. The well-formedness proof is an argument of knowledge of a legal placement under the discrete logarithm assumption in the random oracle model (Theorem~\ref{thm:wf}). Honest players never abort, and the game unfolds as ideal Battleship (Theorem~\ref{thm:correctness}). A cheating player is bound at commit time to a single legal placement, and every answer the honest player accepts is the correct answer for it (Theorem~\ref{thm:binding}). The view of an opponent, however it deviates, is identically distributed for any two legal placements that give the same ideal answers to the questions it asks, with no computational assumption and no random oracle (Theorem~\ref{thm:privacy}). For the standard $10\times10$ game with the usual fleet, the commitment is 760 group elements, the well-formedness proof is 83 KB with plain $\Sigma$-protocols or about 1 KB with Bulletproofs, and a shot costs 64 bytes to answer (Section~\ref{sec:costs}).
+
+The protocol is purely two-party. No ledger, contract or third party is involved. What cannot be had without one, namely forcing a losing player to keep playing, is discussed in Section~\ref{sec:limitations}.
+
+\section{Preliminaries}
+\subsection{Notation and setting}
+For an integer $m$ let $[m]=\{1,\ldots,m\}$. Vectors are written in bold and indexed by subscripts, $\langle\cdot,\cdot\rangle$ is the inner product, $\mathbf 1_T$ is the indicator vector of a set $T$, $\mathbf 1$ and $\mathbf 0$ are the all-ones and all-zeros vectors, and $M_i$ denotes the $i$th row of a matrix $M$. For $\mathbf E\in\G^P$ and $\mathbf w\in\Z_q^P$ we write
+\[
+  \mathbf E^{\mathbf w}=\prod_p E_p^{w_p},
+\]
+and for $\mathbf v,\mathbf r\in\Z_q^P$ we write $g^{\mathbf v}h^{\mathbf r}$ for the vector $(g^{v_p}h^{r_p})_p$. The security parameter is $\lambda$. Small nonnegative integers are identified with their residues in $\Z_q$. Every integer that arises as an inner product below is at most $P$, the total number of ship positions, and we assume $q>P$, so no such sum wraps around.
+
+$\G$ is a cyclic group of prime order $q\ge 2^{2\lambda}$, written multiplicatively, with generators $g$ and $h$. The discrete logarithm assumption states that for every probabilistic polynomial-time $B$, the advantage
+\[
+  \Adv^{\mathrm{dlog}}_B(\lambda)
+  =\Pr[B(\G,q,g,h)=\log_g h]
+\]
+is negligible when $h$ is uniform in $\G$. We write $\xi=\log_h g$, so that $g=h^\xi$; this quantity appears only inside proofs. In practice $g$ and $h$ are obtained by hashing fixed strings into $\G$, so no party knows $\xi$ and no trusted setup is needed.
+
+\subsection{Pedersen commitments and linear openings}
+The Pedersen commitment~\cite{pedersen} to $v\in\Z_q$ with randomness $r\in\Z_q$ is
+\[
+  \Com(v;r)=g^v h^r.
+\]
+Vectors are committed entrywise, $\Com(\mathbf v;\mathbf r)=g^{\mathbf v}h^{\mathbf r}\in\G^P$. For uniform $\mathbf r$ the commitment is uniform in $\G^P$ whatever $\mathbf v$ is, so the scheme is perfectly hiding. It is homomorphic: for every $\mathbf w\in\Z_q^P$,
+\begin{equation}
+  \Com(\mathbf v;\mathbf r)^{\mathbf w}
+  =\Com\bigl(\langle\mathbf w,\mathbf v\rangle;\langle\mathbf w,\mathbf r\rangle\bigr).
+  \label{eq:hom}
+\end{equation}
+
+\begin{definition}[Linear opening]
+Let $\mathbf E\in\G^P$ and $\mathbf w\in\Z_q^P$. A \emph{linear opening} of $\mathbf E$ at $\mathbf w$ is a pair $(a,c)\in\Z_q^2$ such that
+\[
+  \mathbf E^{\mathbf w}=g^a h^c.
+\]
+If $\mathbf E=\Com(\mathbf v;\mathbf r)$, the pair $(\langle\mathbf w,\mathbf v\rangle,\langle\mathbf w,\mathbf r\rangle)$ is a linear opening by~\eqref{eq:hom}, called the \emph{honest} one.
+\end{definition}
+
+The party checking a linear opening needs only $\mathbf E$ and $\mathbf w$. The next two lemmas are the whole of what the game protocol needs from the commitment scheme.
+
+\begin{lemma}[Linear openings are binding]\label{lem:linear-binding}
+Let $\mathbf E=\Com(\mathbf v;\mathbf r)$ and let $(a,c)$ be a linear opening of $\mathbf E$ at $\mathbf w$ with $a\ne\langle\mathbf w,\mathbf v\rangle$. Then
+\[
+  \xi=\frac{c-\langle\mathbf w,\mathbf r\rangle}
+  {\langle\mathbf w,\mathbf v\rangle-a}.
+\]
+\end{lemma}
+\begin{proof}
+By~\eqref{eq:hom}, $g^{\langle\mathbf w,\mathbf v\rangle}h^{\langle\mathbf w,\mathbf r\rangle}=g^a h^c$, so $g^{\langle\mathbf w,\mathbf v\rangle-a}=h^{c-\langle\mathbf w,\mathbf r\rangle}$. Substituting $g=h^\xi$ and comparing exponents in a group of prime order gives $\xi(\langle\mathbf w,\mathbf v\rangle-a)=c-\langle\mathbf w,\mathbf r\rangle$.
+\end{proof}
+
+\begin{lemma}[Coupling]\label{lem:coupling}
+Fix $\mathbf v,\mathbf v'\in\Z_q^P$ and define $\phi:\Z_q^P\to\Z_q^P$ by
+\[
+  \phi(\mathbf r)=\mathbf r+\xi(\mathbf v-\mathbf v').
+\]
+Then $\phi$ is a bijection, $\Com(\mathbf v';\phi(\mathbf r))=\Com(\mathbf v;\mathbf r)$ for every $\mathbf r$, and $\langle\mathbf w,\phi(\mathbf r)\rangle=\langle\mathbf w,\mathbf r\rangle$ for every $\mathbf r$ and every $\mathbf w$ with $\langle\mathbf w,\mathbf v\rangle=\langle\mathbf w,\mathbf v'\rangle$.
+\end{lemma}
+\begin{proof}
+$\phi$ is a translation. Entrywise,
+\[
+  g^{v'_p}h^{r_p+\xi(v_p-v'_p)}
+  =g^{v'_p}h^{r_p}g^{v_p-v'_p}
+  =g^{v_p}h^{r_p}.
+\]
+Finally,
+\[
+  \langle\mathbf w,\phi(\mathbf r)\rangle
+  =\langle\mathbf w,\mathbf r\rangle
+   +\xi\bigl(\langle\mathbf w,\mathbf v\rangle-\langle\mathbf w,\mathbf v'\rangle\bigr).
+\]
+\end{proof}
+
+The lemma says that the randomness of a commitment to $\mathbf v$ can be reinterpreted, pointwise, as randomness of a commitment to $\mathbf v'$ without changing the commitment or any linear opening at a functional on which $\mathbf v$ and $\mathbf v'$ agree. Nobody needs to know $\xi$ for this to be true. Every privacy claim below is an application of it.
+
+\subsection{$\Sigma$-protocols and Fiat--Shamir}
+A $\Sigma$-protocol for a relation $R$ is a three-move protocol between a prover holding $(\stmt,w)\in R$ and a verifier holding $\stmt$: the prover sends a first message $a$, the verifier sends a challenge $x\leftarrow\Z_q$, the prover sends a response $z$, and the verifier applies a decision predicate to $(\stmt,a,x,z)$. We use the following properties~\cite{damgard-sigma}.
+\begin{itemize}[leftmargin=2em]
+  \item \emph{Completeness.} An honest run is accepted.
+  \item \emph{Special soundness relative to DLOG.} There is an efficient extractor $\Ext$ that, given two accepting transcripts $(a,x,z)$ and $(a,x',z')$ with $x\ne x'$, outputs either a witness $w$ with $(\stmt,w)\in R$ or the value $\xi$.
+  \item \emph{Perfect special honest-verifier zero knowledge (SHVZK).} There is an efficient simulator $\Sim$ such that for every $\stmt$ with a witness and every $x\in\Z_q$, $\Sim(\stmt,x)$ outputs $(a,z)$ distributed exactly as in an honest run whose challenge is $x$.
+\end{itemize}
+The parallel composition of finitely many $\Sigma$-protocols with a common challenge is again a $\Sigma$-protocol with all three properties: the extractor and the simulator are applied componentwise.
+
+The Fiat--Shamir transform~\cite{fiat-shamir} with a hash function $H$ and a context string $\ctx$ turns $\Sigma$ into a non-interactive system $\NI[\Sigma]$: the prover computes $a$, sets $x=H(\ctx,\stmt,a)$, computes $z$, and outputs $(x,z)$. In all protocols below the first message is determined by $(\stmt,x,z)$ through the verification equations, so the verifier recomputes $a$ and checks that $x=H(\ctx,\stmt,a)$. The context binds a proof to a session and to the identity of its prover; a proof produced under one context is rejected under another.
+
+\begin{lemma}[Fiat--Shamir is an argument of knowledge, \cite{pointcheval-stern,bellare-neven}]\label{lem:fs-aok}
+Let $\Sigma$ have special soundness relative to DLOG, and model $H$ as a random oracle. For every algorithm $A$ that makes at most $Q$ queries to $H$ and outputs $(\ctx,\stmt,x,z)$ accepted by the verifier with probability $\varepsilon$, there is an algorithm $E$ that runs $A$ twice on the same random tape, answering oracle queries identically up to a forking point, and outputs a witness for $\stmt$ or the value $\xi$ with probability at least
+\[
+  \varepsilon(\varepsilon/Q-1/q).
+\]
+\end{lemma}
+This is the general forking lemma of Bellare and Neven applied to the query at which $A$ obtains its challenge, followed by $\Ext$. The term $1/q$ accounts for a proof whose challenge was never queried.
+
+\begin{lemma}[Fiat--Shamir preserves perfect witness indistinguishability]\label{lem:fs-pwi}
+Let $\Sigma$ have perfect SHVZK. For every function $H$, every context, every statement, and every two witnesses $w_0,w_1$ for it, the proofs output by $\NI[\Sigma]$ using $w_0$ and using $w_1$ are identically distributed.
+\end{lemma}
+\begin{proof}
+Let $D_w(a,z\mid x)$ be the distribution of $(a,z)$ in an interactive run with witness $w$ whose challenge is fixed to $x$. Since the first message is sent before the challenge,
+\[
+  D_w(a,z\mid x)=\Pr_w[a]\cdot\Pr_w[z\mid a,x].
+\]
+Perfect SHVZK gives $D_{w_0}(\cdot\mid x)=D_{w_1}(\cdot\mid x)$ for every $x$, both being the output distribution of $\Sim(\stmt,x)$. The non-interactive proof with witness $w$ places mass
+\[
+  \Pr_w[a]\cdot\Pr_w[z\mid a,H(\ctx,\stmt,a)]
+  =D_w(a,z\mid H(\ctx,\stmt,a))
+\]
+on $(a,z)$, which does not depend on $w$.
+\end{proof}
+
+\subsection{The bit protocol and Schnorr's protocol}
+The following protocol, from Groth and Kohlweiss~\cite{groth-kohlweiss}, proves that a Pedersen commitment opens to a bit. It is our range proof for $[0,2)$.
+
+\begin{construction}[$\bitsigma$]\label{con:sigmabit}
+Statement $C\in\G$; witness $(b,r)$ with $C=g^b h^r$ and $b\in\{0,1\}$.
+\begin{enumerate}
+  \item The prover samples $a,d,t\leftarrow\Z_q$ and sends $c_a=g^a h^d$ and $c_b=g^{ab}h^t$.
+  \item The verifier sends $x\leftarrow\Z_q$.
+  \item The prover sends $f=bx+a$, $z_a=rx+d$ and $z_b=r(x-f)+t$.
+  \item The verifier accepts iff $C^x c_a=g^f h^{z_a}$ and $C^{x-f}c_b=h^{z_b}$.
+\end{enumerate}
+\end{construction}
+
+\begin{lemma}\label{lem:sigmabit}
+$\bitsigma$ is complete, has special soundness relative to DLOG, and is perfectly SHVZK.
+\end{lemma}
+\begin{proof}
+\emph{Completeness.} $C^x c_a=g^{bx+a}h^{rx+d}$. For the second equation,
+\[
+  C^{x-f}c_b=g^{b(x-f)+ab}h^{r(x-f)+t},
+\]
+and $b(x-f)+ab=bx-b(bx+a)+ab=bx(1-b)=0$ for $b\in\{0,1\}$.
+
+\emph{Special soundness.} Take accepting $(c_a,c_b;x;f,z_a,z_b)$ and $(c_a,c_b;x';f',z_a',z_b')$ with $x\ne x'$. Dividing the two instances of the first equation gives
+\[
+  C^{x-x'}=g^{f-f'}h^{z_a-z_a'},
+\]
+hence $C=g^b h^r$ with
+\[
+  b=\frac{f-f'}{x-x'},\qquad r=\frac{z_a-z_a'}{x-x'},
+\]
+the root being unique in a group of prime order. Dividing the two instances of the second equation gives
+\[
+  C^{(x-f)-(x'-f')}=h^{z_b-z_b'}.
+\]
+The exponent is $(x-x')-(f-f')=(x-x')(1-b)$, so substituting $C=g^b h^r$ yields
+\[
+  g^{b(1-b)(x-x')}=h^{z_b-z_b'-r(1-b)(x-x')}.
+\]
+If $b(1-b)=0$ then $(b,r)$ is a witness. Otherwise the exponent of $g$ is nonzero and
+\[
+  \xi=\frac{z_b-z_b'-r(1-b)(x-x')}{b(1-b)(x-x')}.
+\]
+
+\emph{Perfect SHVZK.} $\Sim(C,x)$ samples $f,z_a,z_b\leftarrow\Z_q$ and sets
+\[
+  c_a=g^f h^{z_a}C^{-x},\qquad c_b=h^{z_b}C^{f-x}.
+\]
+In a real run $f,z_a,z_b$ are independent and uniform, being one-time-padded by $a,d,t$ respectively, and $c_a,c_b$ are determined by $(x,f,z_a,z_b)$ through the verification equations in both cases.
+\end{proof}
+
+Schnorr's protocol~\cite{schnorr} for the statement $D\in\G$ and witness $\epsilon$ with $D=h^\epsilon$ is: send $R=h^t$ for $t\leftarrow\Z_q$, receive $x$, send $z=t+x\epsilon$, and accept iff $h^z=RD^x$. Two accepting transcripts with $x\ne x'$ give $\epsilon=(z-z')/(x-x')$, and $\Sim(D,x)$ samples $z$ and sets $R=h^zD^{-x}$. It is complete, special sound (unconditionally) and perfectly SHVZK.
+
+\section{Battleship as a linear system}
+\subsection{Boards, fleets and positions}
+A board is a finite set of cells identified with $[N]$; on the standard $n\times n$ grid, $N=n^2$. A fleet consists of $K$ ships. Ship $k$ has length $\ell_k$ and a finite nonempty set $P_k$ of legal positions; a position $p\in P_k$ is a subset $\cells(p)\subseteq[N]$ with $|\cells(p)|=\ell_k$. On the standard board with the usual rules, $P_k$ is the set of horizontal and vertical segments of length $\ell_k$ that lie inside the grid, and
+\[
+  |P_k|=2n(n-\ell_k+1).
+\]
+A fleet placement is a tuple $(p_1,\ldots,p_K)\in P_1\times\cdots\times P_K$; it is legal if the sets $\cells(p_k)$ are pairwise disjoint. Its board is $\mathbf b\in\{0,1\}^N$ with $b_i=1$ iff $i\in\bigcup_k\cells(p_k)$. Let
+\[
+  T=\sum_k\ell_k
+\]
+be the number of occupied cells and $L=\{\ell_1,\ldots,\ell_K\}$ the set of distinct lengths. For the usual fleet $(\ell_k)=(5,4,3,3,2)$, so $K=5$, $T=17$ and $L=\{5,4,3,2\}$.
+
+\begin{remark}[Cells are not enough]\label{rem:cells-not-enough}
+Statements about $\mathbf b$ alone do not capture legality through counting and fitting. On the standard board, let $\mathbf b$ have ones on the five cells $(1,1),\ldots,(1,5)$ of the first row and on twelve further cells, none of which is orthogonally adjacent to any other one of $\mathbf b$. Then $\langle\mathbf1,\mathbf b\rangle=17$, and for every ship in the fleet there is a horizontal segment of the right length inside $\supp(\mathbf b)$, yet no legal placement has board $\mathbf b$: the only maximal segment of length at least two is the first-row segment, and it cannot host more than one ship of the fleet together with all the others. Legality is a property of an assignment of ships to cells, which $\mathbf b$ does not record. The encoding below makes the assignment explicit.
+\end{remark}
+
+\subsection{The one-hot encoding}
+Let
+\[
+  P=\sum_k|P_k|
+\]
+and identify $[P]$ with the disjoint union $P_1\sqcup\cdots\sqcup P_K$, so that block $k$ of a vector in $\Z_q^P$ is indexed by $P_k$. Write $\mathbf1_k$ for the indicator vector of block $k$. The incidence matrix $M\in\{0,1\}^{N\times P}$ has $M_{ip}=1$ iff $i\in\cells(p)$. A fleet placement $(p_1,\ldots,p_K)$ is encoded by the vector $\mathbf e\in\{0,1\}^P$ with $e_p=1$ iff $p\in\{p_1,\ldots,p_K\}$; its block $k$ is the unit vector at $p_k$. Let $V\subseteq\{0,1\}^P$ be the set of encodings of legal placements.
+
+\begin{lemma}[Linearization]\label{lem:linearization}
+A vector $\mathbf e\in\Z_q^P$ lies in $V$ if and only if
+\begin{align*}
+  \text{(L1)}\quad &\mathbf e\in\{0,1\}^P,\\
+  \text{(L2)}\quad &\langle\mathbf1_k,\mathbf e\rangle=1\quad\text{for every }k\in[K],\\
+  \text{(L3)}\quad &M\mathbf e\in\{0,1\}^N.
+\end{align*}
+In that case $M\mathbf e$ is the board of the encoded placement and $\langle\mathbf1,M\mathbf e\rangle=T$.
+\end{lemma}
+\begin{proof}
+Suppose (L1)--(L3) hold. By (L1) the entries of block $k$ are bits, so their integer sum lies in $[0,|P_k|]$; since $|P_k|<q$ and the sum is 1 modulo $q$ by (L2), it is 1 as an integer, and block $k$ is the unit vector at a unique $p_k\in P_k$. Then
+\[
+  (M\mathbf e)_i=\sum_k[i\in\cells(p_k)]
+\]
+is the number of ships covering cell $i$, an integer in $[0,K]$, and (L3) says it is at most one for every $i$, which is pairwise disjointness. Conversely, the encoding of a legal placement satisfies (L1) and (L2) by construction and (L3) by disjointness. In either case $(M\mathbf e)_i=1$ iff some ship covers $i$, and
+\[
+  \langle\mathbf1,M\mathbf e\rangle
+  =\sum_p e_p|\cells(p)|
+  =\sum_k\ell_k.
+\]
+\end{proof}
+
+Conditions (L1) and (L3) are bit-range statements, and (L2) is a linear equality. In-bounds and shape constraints are absorbed into the definition of $P_k$, and the cell count follows from (L2). This is why the encoding is compatible with what Pedersen commitments and range proofs can express.
+
+\begin{remark}[Extended formulation]
+In the language of combinatorial optimization, Lemma~\ref{lem:linearization} is an extended formulation of the set of legal boards: the image of $\{\mathbf e\in\{0,1\}^P:(\mathrm{L2}),(\mathrm{L3})\}$ under $M$ is exactly the set of legal boards, and the lifted description uses only bit constraints and linear equalities. The price is the number of variables, $P$ in place of $N$. Section~\ref{sec:costs} shows it is modest.
+\end{remark}
+
+\subsection{Sunk reports}
+The standard rules require the owner of a hit cell to announce when the hit completes a ship. For $S\subseteq[N]$ and $k\in[K]$ let $\mathbf w_{k,S}\in\{0,1\}^P$ be supported on block $k$ with
+\[
+  w_{k,S,p}=[\cells(p)\subseteq S].
+\]
+If $\mathbf e\in V$ encodes $(p_1,\ldots,p_K)$ then
+\[
+  \langle\mathbf w_{k,S},\mathbf e\rangle=[\cells(p_k)\subseteq S],
+\]
+which is 1 iff ship $k$ is sunk once every cell in $S$ has been shot. Two ships of the same length are interchangeable under the rules, and reporting which of them was sunk would leak the player's private labeling, so reports are aggregated by length: for $\ell\in L$ let
+\[
+  \mathbf w_{\ell,S}=\sum_{k:\,\ell_k=\ell}\mathbf w_{k,S},
+  \qquad
+  \tau_\ell(\mathbf e,S)=\langle\mathbf w_{\ell,S},\mathbf e\rangle,
+\]
+the number of sunk ships of length $\ell$, and let
+\[
+  \tau(\mathbf e,S)=(\tau_\ell(\mathbf e,S))_{\ell\in L}.
+\]
+For $\mathbf e\in V$, $\sum_\ell\tau_\ell(\mathbf e,S)=K$ iff every ship is sunk iff $|S\cap\supp(M\mathbf e)|=T$.
+
+\subsection{The ideal game}
+\begin{definition}[Ideal Battleship]\label{def:ideal}
+Fix $\mathbf e^A,\mathbf e^B\in V$. The state consists of sets $S^A,S^B\subseteq[N]$, initially empty, recording the cells shot on each board. A turn of player $\alpha$ against $\beta$ consists of $\alpha$ choosing $i\in[N]\setminus S^\beta$, after which $S^\beta$ is replaced by $S^\beta\cup\{i\}$ and $\alpha$ learns $b=\langle M_i,\mathbf e^\beta\rangle$ and, if $b=1$, also $\tau(\mathbf e^\beta,S^\beta)$. Players alternate turns. Player $\alpha$ wins when
+\[
+  \langle\mathbf1_{S^\beta},M\mathbf e^\beta\rangle=T.
+\]
+\end{definition}
+
+Every value revealed to $\alpha$ has the form $\langle\mathbf w,\mathbf e^\beta\rangle$ with $\mathbf w$ in the family
+\[
+  \{M_i\}_{i\in[N]}\cup\{\mathbf w_{\ell,S}\}_{\ell\in L,\,S\subseteq[N]},
+\]
+and which $\mathbf w$ is used at each point is determined by the public shot history. We call these the \emph{game functionals} and the sequence of pairs $(\mathbf w,\langle\mathbf w,\mathbf e^\beta\rangle)$ the \emph{ideal answers} of $\beta$. A shooting strategy for $\alpha$ is a function of the transcript and independent coins; a strategy that depended on $\alpha$'s own board would leak through the shots themselves, which no protocol can prevent.
+
+\section{The protocol}
+\subsection{Parameters and context}
+The public parameters are
+\[
+  \pp=(\G,q,g,h,H,[N],(P_k)_{k\in[K]},M),
+\]
+where $H$ is a hash function onto $\Z_q$. The players $A$ and $B$ have identities $\id_A\ne\id_B$ and agree on a session identifier $\sid$ formed from fresh nonces contributed by both. Player $\alpha$'s context is
+\[
+  \ctx_\alpha=(\id_\alpha,\sid).
+\]
+
+\subsection{The well-formedness argument}
+The argument is $\NI[\wfsigma]$ for the relation
+\[
+  R_{\mathrm{wf}}
+  =\bigl\{(\mathbf E;(\mathbf e,\mathbf s)):\mathbf E=\Com(\mathbf e;\mathbf s),\ \mathbf e\in V\bigr\},
+\]
+where $\wfsigma$ is the parallel composition, with a common challenge, of $P+N$ instances of $\bitsigma$ and $K$ instances of Schnorr's protocol. The instances of $\bitsigma$ are run on the $P$ placement commitments and on $N$ derived cell commitments that both parties compute homomorphically; the Schnorr instances establish (L2).
+
+\begin{construction}[$\wfpi$]\label{con:wf}
+Common input: $\pp$, a context $\ctx$, and $\mathbf E\in\G^P$. Prover input: $(\mathbf e,\mathbf s)$ with $(\mathbf E;(\mathbf e,\mathbf s))\in R_{\mathrm{wf}}$. Both parties compute
+\[
+  C_i=\mathbf E^{M_i}\quad(i\in[N]),
+  \qquad
+  D_k=\mathbf E^{\mathbf1_k}g^{-1}\quad(k\in[K]),
+\]
+and the prover computes
+\[
+  b_i=\langle M_i,\mathbf e\rangle,
+  \qquad
+  \rho_i=\langle M_i,\mathbf s\rangle,
+  \qquad
+  \epsilon_k=\langle\mathbf1_k,\mathbf s\rangle,
+\]
+so that $C_i=\Com(b_i;\rho_i)$ by~\eqref{eq:hom} and $D_k=h^{\epsilon_k}$ by~\eqref{eq:hom} and (L2). Let $X_1,\ldots,X_{P+N}$ enumerate $E_1,\ldots,E_P,C_1,\ldots,C_N$, and let $(v_j,u_j)$ be the opening of $X_j$ known to the prover.
+
+\emph{Prove.}
+\begin{enumerate}
+  \item For each $j\in[P+N]$ sample $a_j,d_j,t_j\leftarrow\Z_q$ and set
+  \[
+    c_{a,j}=g^{a_j}h^{d_j},\qquad c_{b,j}=g^{a_jv_j}h^{t_j}.
+  \]
+  \item For each $k\in[K]$ sample $t'_k\leftarrow\Z_q$ and set $R_k=h^{t'_k}$.
+  \item Compute
+  \[
+    x=H\bigl(\pp,\ctx,\mathbf E,(c_{a,j},c_{b,j})_{j\in[P+N]},(R_k)_{k\in[K]}\bigr).
+  \]
+  \item For each $j$ set
+  \[
+    f_j=v_jx+a_j,\qquad z_{a,j}=u_jx+d_j,\qquad z_{b,j}=u_j(x-f_j)+t_j.
+  \]
+  For each $k$ set $z_k=t'_k+x\epsilon_k$.
+  \item Output
+  \[
+    \pi=\bigl(x,(f_j,z_{a,j},z_{b,j})_{j\in[P+N]},(z_k)_{k\in[K]}\bigr).
+  \]
+\end{enumerate}
+
+\emph{Verify.} Compute
+\[
+  \widehat c_{a,j}=g^{f_j}h^{z_{a,j}}X_j^{-x},
+  \qquad
+  \widehat c_{b,j}=h^{z_{b,j}}X_j^{f_j-x},
+  \qquad
+  \widehat R_k=h^{z_k}D_k^{-x},
+\]
+and accept iff
+\[
+  x=H\bigl(\pp,\ctx,\mathbf E,(\widehat c_{a,j},\widehat c_{b,j})_{j\in[P+N]},(\widehat R_k)_{k\in[K]}\bigr).
+\]
+\end{construction}
+
+The recomputation of $\widehat c_{a,j}$, $\widehat c_{b,j}$ and $\widehat R_k$ is a rearrangement of the verification equations of $\bitsigma$ and of Schnorr's protocol, so a proof is accepted iff the recomputed first messages, $x$ and the responses form accepting transcripts of every component and $x$ is the hash of those first messages. The prover never commits to the board separately: the verifier knows by construction that $C_i$ commits to $\langle M_i,\mathbf e\rangle$, whatever $\mathbf e$ is, and the bit proofs on the $C_i$ are what enforce (L3).
+
+\begin{remark}
+Condition (L2) could be established without a Schnorr proof by sending $\epsilon_k$ in the clear, since $(1,\epsilon_k)$ is then a linear opening of $\mathbf E$ at $\mathbf1_k$ and $\langle\mathbf1_k,\mathbf e\rangle=1$ for every legal $\mathbf e$; Theorem~\ref{thm:privacy} shows this leaks nothing. We keep the Schnorr proof so that $\wfpi$ is zero knowledge in its own right, at a cost of $K$ scalars.
+\end{remark}
+
+\subsection{The game}
+\begin{construction}[$\bspi$]\label{con:game}
+\emph{Commit.} Each player $\alpha$ chooses a legal placement and encodes it as $\mathbf e^\alpha\in V$, samples $\mathbf s^\alpha\leftarrow\Z_q^P$, computes
+\[
+  \mathbf E^\alpha=\Com(\mathbf e^\alpha;\mathbf s^\alpha)
+\]
+and
+\[
+  \pi^\alpha\leftarrow\wfpi.\mathrm{Prove}(\pp,\ctx_\alpha,\mathbf E^\alpha;(\mathbf e^\alpha,\mathbf s^\alpha)),
+\]
+and sends $(\mathbf E^\alpha,\pi^\alpha)$. On receiving $(\mathbf E^\beta,\pi^\beta)$, player $\alpha$ runs
+\[
+  \wfpi.\mathrm{Verify}(\pp,\ctx_\beta,\mathbf E^\beta,\pi^\beta)
+\]
+and aborts if it rejects. The first mover is chosen by a coin flip~\cite{blum-coin}. Both players set $S^A=S^B=\varnothing$ and their hit counters to zero.
+
+\emph{Play.} A turn of $\alpha$ against $\beta$:
+\begin{enumerate}
+  \item $\alpha$ sends $i\in[N]\setminus S^\beta$. Both players replace $S^\beta$ by $S^\beta\cup\{i\}$.
+  \item $\beta$ sends the honest linear opening of $\mathbf E^\beta$ at $M_i$, that is
+  \[
+    (b,\rho)=\bigl(\langle M_i,\mathbf e^\beta\rangle,\langle M_i,\mathbf s^\beta\rangle\bigr).
+  \]
+  If $b=1$, $\beta$ also sends, for each $\ell\in L$, the honest linear opening at $\mathbf w_{\ell,S^\beta}$, that is
+  \[
+    (\tau_\ell,\theta_\ell)
+    =\bigl(\langle\mathbf w_{\ell,S^\beta},\mathbf e^\beta\rangle,
+      \langle\mathbf w_{\ell,S^\beta},\mathbf s^\beta\rangle\bigr).
+  \]
+  \item $\alpha$ checks
+  \[
+    (\mathbf E^\beta)^{M_i}=g^b h^\rho
+  \]
+  and, if $b=1$,
+  \[
+    (\mathbf E^\beta)^{\mathbf w_{\ell,S^\beta}}=g^{\tau_\ell}h^{\theta_\ell}
+  \]
+  for every $\ell\in L$. If a check fails, $\alpha$ aborts. If $b=1$, $\alpha$ increments its hit counter.
+\end{enumerate}
+
+\emph{End.} The first player whose hit counter reaches $T$ wins. A player who aborts or fails to send a message of the required form forfeits.
+\end{construction}
+
+After the commit phase, every message a player sends about its own board is a linear opening, and the checks in step 3 use only $\mathbf E^\beta$ and the public shot history. The exponent vectors are sparse: $M_i$ has one entry per position covering cell $i$, and $\mathbf w_{\ell,S}$ has one entry per position of a length-$\ell$ ship inside $S$.
+
+\section{Security}
+\subsection{The well-formedness argument}
+\begin{theorem}\label{thm:wf}
+$\wfpi$ is complete. Under the discrete logarithm assumption, with $H$ modeled as a random oracle, it is an argument of knowledge for $R_{\mathrm{wf}}$: for every $A$ that makes at most $Q$ oracle queries and outputs $(\ctx,\mathbf E,\pi)$ accepted by Verify with probability $\varepsilon$, there is an extractor that runs $A$ twice and outputs $(\mathbf e,\mathbf s)$ with $\mathbf E=\Com(\mathbf e;\mathbf s)$ and $\mathbf e\in V$, or else $\xi$, with probability at least $\varepsilon(\varepsilon/Q-1/q)$. For every function $H$ it is perfectly witness indistinguishable. When $H$ is a programmable random oracle it is zero knowledge.
+\end{theorem}
+\begin{proof}
+Completeness follows from that of the components, since the prover's openings of the $X_j$ and $D_k$ are correct by~\eqref{eq:hom}.
+
+For knowledge soundness it suffices, by Lemma~\ref{lem:fs-aok}, to show that $\wfsigma$ has special soundness relative to DLOG for $R_{\mathrm{wf}}$. Take two accepting transcripts with the same first messages and challenges $x\ne x'$. Apply the extractor of Lemma~\ref{lem:sigmabit} to each of the $P+N$ bit components and Schnorr's extractor to each of the $K$ Schnorr components. If any of them returns $\xi$ we are done. Otherwise we hold, for each $j$, an opening $(v_j,u_j)$ with $X_j=\Com(v_j;u_j)$ and $v_j\in\{0,1\}$, and, for each $k$, a value $\epsilon_k$ with $D_k=h^{\epsilon_k}$. Set $\mathbf e=(v_1,\ldots,v_P)$ and $\mathbf s=(u_1,\ldots,u_P)$, so $\mathbf E=\Com(\mathbf e;\mathbf s)$ and (L1) holds. For each $i$, $(v_{P+i},u_{P+i})$ is a linear opening of $\mathbf E$ at $M_i$, because $X_{P+i}=C_i=\mathbf E^{M_i}$; by Lemma~\ref{lem:linear-binding}, either $v_{P+i}=\langle M_i,\mathbf e\rangle$ or we can compute $\xi$. For each $k$, $(1,\epsilon_k)$ is a linear opening of $\mathbf E$ at $\mathbf1_k$, because $\mathbf E^{\mathbf1_k}=gD_k=g^1h^{\epsilon_k}$; by Lemma~\ref{lem:linear-binding}, either $\langle\mathbf1_k,\mathbf e\rangle=1$ or we can compute $\xi$. If no $\xi$ has been found, $\mathbf e$ satisfies (L1)--(L3) and lies in $V$ by Lemma~\ref{lem:linearization}.
+
+Witness indistinguishability follows from Lemma~\ref{lem:fs-pwi}, since $\wfsigma$ is perfectly SHVZK as a parallel composition of perfectly SHVZK components.
+
+For zero knowledge, the simulator samples $x$ and all responses uniformly, computes the first messages from the verification equations as Verify does, and programs $H$ to return $x$ at the resulting point. The simulated proof has exactly the distribution of a real one by perfect SHVZK of the components, and the programming fails only if the point was queried before, which, since each simulated first message is uniform in $\G$, happens with probability at most $Q/q$.
+\end{proof}
+
+\subsection{Correctness}
+\begin{theorem}\label{thm:correctness}
+If both players follow $\bspi$, neither aborts, and the messages exchanged in the play phase are exactly the shots and ideal answers of the ideal game (Definition~\ref{def:ideal}) on $(\mathbf e^A,\mathbf e^B)$ with the same shots. In particular the winner is the player who first hits every cell of the opposing board.
+\end{theorem}
+\begin{proof}
+The well-formedness proofs verify by completeness. Every opening sent in the play phase is the honest linear opening of $\mathbf E^\beta$ at a game functional, so it passes the check of step 3 by~\eqref{eq:hom}, and its first component is $\langle\mathbf w,\mathbf e^\beta\rangle$, the ideal answer. By Lemma~\ref{lem:linearization}, the values $\langle M_i,\mathbf e^\beta\rangle$ are the cells of the board of $\beta$'s placement, so $\alpha$'s hit counter reaches $T$ exactly when $\alpha$ has shot every occupied cell.
+\end{proof}
+
+\subsection{Board binding}
+\begin{definition}[Binding experiment]\label{def:binding-exp}
+For an adversary $A$, $\Exp_A^{\mathrm{bind}}$ runs as follows. $A$ outputs $\mathbf e^\alpha\in V$. Player $\alpha$ is run honestly on $\mathbf e^\alpha$ against $A$ in the role of $\beta$, with $\alpha$'s shots supplied by $A$, and $H$ is a random oracle. Let $\mathsf{Bad}$ be the event that $\alpha$ accepts $\pi^\beta$ and there is no $\mathbf e\in V$ such that every linear opening $(\mathbf w,a,\cdot)$ accepted by $\alpha$ in the play phase satisfies $a=\langle\mathbf w,\mathbf e\rangle$.
+\end{definition}
+
+The event $\mathsf{Bad}$ captures every way of cheating in one's own answers: moving a ship, denying a hit, claiming a miss where a cell is occupied, misreporting a sinking, or having committed to no legal placement at all. Its complement says that every answer $\alpha$ accepts is the ideal answer for one fixed legal placement.
+
+\begin{theorem}\label{thm:binding}
+Under the discrete logarithm assumption, with $H$ modeled as a random oracle, $\Pr[\mathsf{Bad}]$ is negligible for every probabilistic polynomial-time $A$. Concretely, if $A$ makes at most $Q$ oracle queries and $\varepsilon=\Pr[\mathsf{Bad}]$, there is $B$ running in about twice the time of the experiment with
+\[
+  \Adv_B^{\mathrm{dlog}}\ge\varepsilon(\varepsilon/Q-1/q).
+\]
+Moreover, the placement to which $A$ is bound is determined by $A$'s state at the end of the commit phase.
+\end{theorem}
+\begin{proof}
+$B$ receives $(\G,q,g,h)$, completes $\pp$, and runs the experiment, playing $\alpha$ honestly with the board and shots supplied by $A$ and answering oracle queries by lazy sampling. Consider the algorithm $A'$ that runs the experiment to its end and outputs $(\ctx_\beta,\mathbf E^\beta,\pi^\beta)$ together with the list of linear openings accepted by $\alpha$. Apply the forking extractor of Lemma~\ref{lem:fs-aok} to $A'$ at the oracle query that yields the challenge in $\pi^\beta$, with $\mathsf{Bad}$ as the success event; $\mathsf{Bad}$ implies that $\pi^\beta$ is accepted. Two remarks justify this. The honest player is part of $A'$ and is run with coins fixed by $B$, so $A'$ is a well-defined randomized algorithm with oracle access. And every oracle query made by the honest player has $\id_\alpha$ in its input while the forked query has $\id_\beta$, so the fork changes the answer to none of $\alpha$'s queries; the identities in the context are what make this true.
+
+With probability at least $\varepsilon(\varepsilon/Q-1/q)$ the fork succeeds, the first run is a $\mathsf{Bad}$ run, and the extractor of Theorem~\ref{thm:wf} returns either $\xi$ or $(\mathbf e^\beta,\mathbf s^\beta)$ with $\mathbf E^\beta=\Com(\mathbf e^\beta;\mathbf s^\beta)$ and $\mathbf e^\beta\in V$. In the second case, since $\mathsf{Bad}$ held in the first run, some opening $(\mathbf w,a,c)$ accepted in that run has $a\ne\langle\mathbf w,\mathbf e^\beta\rangle$, and Lemma~\ref{lem:linear-binding} yields $\xi$ from $(\mathbf e^\beta,\mathbf s^\beta,\mathbf w,a,c)$. In either case $B$ outputs $\log_g h=\xi^{-1}$.
+
+The extracted $\mathbf e^\beta$ is computed from the two runs of the commit phase alone and does not depend on the play phase, and the argument shows that any accepted answer inconsistent with it gives a discrete logarithm. This is the final claim.
+\end{proof}
+
+\begin{corollary}\label{cor:binding}
+Except with negligible probability, whenever the honest player accepts $\pi^\beta$ there is a legal placement, fixed at the end of the commit phase, such that the play phase between the honest player and $A$ proceeds, until $A$ aborts or is caught, exactly as the ideal game against that placement. In particular the honest player wins as soon as it has shot all $T$ cells of that placement's board, and not before.
+\end{corollary}
+
+\subsection{Privacy}
+\begin{definition}[Privacy experiment]\label{def:privacy-exp}
+For an adversary $A$ and $\gamma\in\{0,1\}$, $\Exp_{A,\gamma}^{\mathrm{priv}}$ runs as follows. $A$ outputs $\mathbf e_0,\mathbf e_1\in V$. Player $\alpha$ is run honestly on $\mathbf e_\gamma$ against $A$ in the role of $\beta$, with $\alpha$'s shots supplied by $A$; $A$ may otherwise send arbitrary messages. Whenever $\alpha$ is about to send a linear opening at a game functional $\mathbf w$ with $\langle\mathbf w,\mathbf e_0\rangle\ne\langle\mathbf w,\mathbf e_1\rangle$, the experiment stops. The output is $A$'s view: its coins, every message it received, and whether the experiment stopped.
+\end{definition}
+
+The stopping rule is symmetric in $\gamma$, because the functional at which the next opening will be made is determined by the public transcript. The experiment therefore asks whether an opponent can tell two legal placements apart using only questions whose ideal answers agree on both. That is the strongest privacy one can ask of a game whose ideal answers are revealed by design.
+
+\begin{theorem}\label{thm:privacy}
+For every adversary $A$, computationally unbounded, and every function $H$, the outputs of $\Exp_{A,0}^{\mathrm{priv}}$ and $\Exp_{A,1}^{\mathrm{priv}}$ are identically distributed.
+\end{theorem}
+\begin{proof}
+Fix the coins of $A$; the honest player's randomness is then $\mathbf s\leftarrow\Z_q^P$ together with the coins $\omega$ of $\wfpi.\mathrm{Prove}$. In world $\gamma$ the commitment is $\mathbf E=\Com(\mathbf e_\gamma;\mathbf s)$, which is uniform in $\G^P$ by perfect hiding, in both worlds. Condition on $\mathbf E=\mathbf E^*$. Let $\mathbf s_\gamma$ be the unique vector with $\Com(\mathbf e_\gamma;\mathbf s_\gamma)=\mathbf E^*$; by Lemma~\ref{lem:coupling} with $(\mathbf v,\mathbf v')=(\mathbf e_0,\mathbf e_1)$, $\mathbf s_1=\phi(\mathbf s_0)$. We compare the two conditional executions message by message.
+
+The proof $\pi$ is produced with witness $(\mathbf e_\gamma,\mathbf s_\gamma)$ for the statement $(\ctx_\alpha,\mathbf E^*)$, and both $(\mathbf e_0,\mathbf s_0)$ and $(\mathbf e_1,\mathbf s_1)$ are witnesses for it. By Theorem~\ref{thm:wf} (witness indistinguishability, for the given $H$), the distribution of $\pi$ over $\omega$ is the same in both worlds.
+
+Every later message of $\alpha$ is a deterministic function of the transcript so far and of $(\mathbf e_\gamma,\mathbf s_\gamma)$. Its shots are supplied by $A$, and its accept-or-abort decisions depend only on messages received. Each opening it sends is the honest linear opening
+\[
+  (\langle\mathbf w,\mathbf e_\gamma\rangle,\langle\mathbf w,\mathbf s_\gamma\rangle)
+\]
+at a game functional $\mathbf w$ determined by the transcript. If the experiment has not stopped, then $\langle\mathbf w,\mathbf e_0\rangle=\langle\mathbf w,\mathbf e_1\rangle$, and Lemma~\ref{lem:coupling} gives $\langle\mathbf w,\mathbf s_0\rangle=\langle\mathbf w,\mathbf s_1\rangle$, so the opening is the same in both worlds. Whether the experiment stops at this point depends only on the transcript and on $(\mathbf e_0,\mathbf e_1)$.
+
+By induction on the number of messages, the conditional distributions of the view given $\mathbf E^*$ coincide, and since $\mathbf E^*$ has the same marginal in both worlds, so do the unconditional distributions.
+\end{proof}
+
+The theorem answers a question that the derived-commitment design raises: the randomness $\rho_i=\langle M_i,\mathbf s\rangle$ revealed for each shot is a linear combination of $\mathbf s$, and one might worry that enough of them determine $\mathbf s$ and hence $\mathbf e$. They do not. The revealed randomness carries exactly the information of the revealed values, no more.
+
+\begin{corollary}[Simulation]\label{cor:simulation}
+Suppose the simulator knows $\xi$, as in a common reference string with a trapdoor or when $h$ is derived from a programmable random oracle. Then there is a straight-line simulator $S$ that, interacting with any $A$ and given only the ideal answers of a hidden $\mathbf e\in V$ as they become determined by $A$'s shots, produces a view identically distributed to $A$'s view in the real interaction, up to the simulation of $\pi$.
+\end{corollary}
+\begin{proof}
+$S$ samples $\mathbf u\leftarrow\Z_q^P$, sends $\mathbf E=h^{\mathbf u}$ with a simulated $\pi$ (Theorem~\ref{thm:wf}), and answers each request for a linear opening at $\mathbf w$ whose ideal value is $a$ with
+\[
+  (a,\langle\mathbf w,\mathbf u\rangle-\xi a).
+\]
+For any $\mathbf e$ with $\langle\mathbf w,\mathbf e\rangle=a$ this is the honest opening of
+\[
+  \Com(\mathbf e;\mathbf u-\xi\mathbf e)=h^{\mathbf u}
+\]
+at $\mathbf w$, and $\mathbf u-\xi\mathbf e$ is uniform, so the simulated commitment and openings have the real distribution.
+\end{proof}
+
+\section{Costs}\label{sec:costs}
+For the standard board, $n=10$, $N=100$, and the usual fleet, $|P_k|=120,140,160,160,180$ for $\ell_k=5,4,3,3,2$, so $P=760$, $K=5$, $T=17$ and $|L|=4$. Sizes below assume a 256-bit group such as Ristretto255, with 32-byte elements and scalars.
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Message & Content & Size \\
+\midrule
+Commitment $\mathbf E$ & $P=760$ group elements & 24,320 B \\
+Proof $\pi$, $\Sigma$-protocol instantiation & $3(P+N)+K+1=2586$ scalars & 82,752 B \\
+Proof $\pi$, Bulletproofs instantiation & $2\lceil\log_2(P+N)\rceil+8$ elements, 5 scalars & 1,056 B \\
+Shot & one cell index & 1 B \\
+Answer & 2 scalars & 64 B \\
+Sunk report, on a hit & $2|L|=8$ scalars & 256 B \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Producing $\pi$ costs the prover about $4(P+N)+K\approx3{,}450$ exponentiations and verifying it about the same number inside short multi-exponentiations, plus
+\[
+  \sum_p|\cells(p)|=2{,}480
+\]
+group multiplications to form the derived commitments $C_i$. Answering a shot costs the responder two inner products with sparse vectors and the shooter one short multi-exponentiation. All of this is milliseconds to tens of milliseconds with a standard curve library; the well-formedness proof is produced once per game.
+
+\paragraph{Compression with Bulletproofs.}
+The relation proved by $\wfsigma$ is a system of bit constraints and linear equalities over committed values, which is exactly the shape handled by the arithmetic-circuit protocol of Bulletproofs~\cite{bulletproofs}. Take the left wires
+\[
+  \mathbf a_L=(\mathbf e,M\mathbf e)\in\Z_q^{P+N},
+\]
+right wires $\mathbf a_R=\mathbf a_L-\mathbf1$, and output wires $\mathbf a_O=\mathbf a_L\circ\mathbf a_R$, with linear constraints $\mathbf a_O=\mathbf0$, $\mathbf a_R=\mathbf a_L-\mathbf1$, $(a_L)_{P+i}=\langle M_i,(\mathbf a_L)_{1..P}\rangle$ for $i\in[N]$, $\langle\mathbf1_k,(\mathbf a_L)_{1..P}\rangle=1$ for $k\in[K]$, and $(a_L)_p=e_p$ tied to the committed inputs $E_p$. This has $P+N$ multiplication gates, and the resulting proof has $2\lceil\log_2(P+N)\rceil+8$ group elements and five scalars; verification is one multi-exponentiation of length $O(P+N)$. The entrywise commitment $\mathbf E$ is retained, since it is what makes every later message a constant-size opening. The security statements of Section~5 carry over with the knowledge soundness and witness indistinguishability of Bulletproofs in place of Theorem~\ref{thm:wf}.
+
+\section{Variants}
+\paragraph{Ships may not touch.}
+Some rule sets forbid two ships from occupying adjacent cells, orthogonally or diagonally. Let $M^\partial\in\{0,1\}^{N\times P}$ have $M^\partial_{ip}=1$ iff $i\notin\cells(p)$ and $i$ is adjacent to a cell of $\cells(p)$, and let
+\[
+  \beta_i=\langle M_i^\partial,\mathbf e\rangle,
+\]
+the number of ships whose ring of neighbouring cells contains $i$; for $\mathbf e\in V$, $0\le\beta_i\le K$. With $b_i=\langle M_i,\mathbf e\rangle$, the placement is non-touching iff $b_i\beta_i=0$ for every $i$. The product is linearized by a big-$M$ constraint: let $m=\lceil\log_2(K+1)\rceil$ and $B=2^m-1\ge K$; then for $b_i\in\{0,1\}$ and $\beta_i\in[0,K]$,
+\[
+  b_i\beta_i=0
+  \iff
+  y_i:=B(1-b_i)-\beta_i\in[0,2^m).
+\]
+Indeed, if $b_i=1$ then $y_i=-\beta_i$, which lies in $[0,2^m)$ modulo $q$ only when $\beta_i=0$, and if $b_i=0$ then $y_i=B-\beta_i\in[B-K,B]\subseteq[0,2^m)$. A commitment to $y_i$ is derivable as
+\[
+  Y_i=g^B C_i^{-B}(\mathbf E^{M_i^\partial})^{-1},
+\]
+and $y_i\in[0,2^m)$ is an $m$-bit range proof: commit to bits $y_{i,0},\ldots,y_{i,m-1}$, prove each with $\bitsigma$, and prove with Schnorr that
+\[
+  Y_i\prod_j Y_{i,j}^{-2^j}
+\]
+is a power of $h$. This adds $mN$ bit proofs and $N$ Schnorr proofs to $\wfpi$; for the usual fleet $m=3$. The privacy and binding proofs are unchanged, since the additional commitments are derived from $\mathbf E$ and fresh bit commitments and the additional proofs are perfectly witness indistinguishable.
+
+\paragraph{Other pieces and boards.}
+Nothing in the design uses the grid. Any finite cell set and any finite family of position sets give the same protocol with a different $M$: polyomino fleets, hexagonal or irregular boards, ships that may be placed diagonally. Rules that constrain a single ship, such as keeping it off the edge, are handled by deleting positions from $P_k$. Rules that constrain pairs of ships are handled as for touching, provided they can be written as a bound on a linear functional of $\mathbf e$ conditioned on a cell bit.
+
+\paragraph{Turn structure and reports.}
+Salvo variants with several shots per turn, or simultaneous shots, change nothing: each shot is an independent opening. The sunk reports can be dropped entirely, in which case the leakage is exactly hits and misses; the win condition is still $T$ hits, which Theorem~\ref{thm:binding} enforces without any report.
+
+\paragraph{The coordinate alternative.}
+A more compact encoding commits, per ship, to a corner coordinate and an orientation bit, so that in-bounds is a range proof on a linear combination of committed values:
+\[
+  x_k+(\ell_k-1)o_k\le n-1,
+  \qquad
+  y_k+(\ell_k-1)(1-o_k)\le n-1.
+\]
+This costs $3K$ commitments instead of $P$. The map from coordinates to occupied cells is not linear, however, so both non-overlap (a disjunction of interval inequalities for each pair of ships) and each shot (a proof that the named cell lies, or does not lie, on each of the $K$ segments) require disjunctions of range proofs~\cite{cramer-damgard-schoenmakers}, with per-shot cost linear in $K$ and a proof rather than an opening. The one-hot encoding pays $P$ group elements once so that every later message is an opening.
+
+\section{Limitations and discussion}\label{sec:limitations}
+\paragraph{Aborts.}
+The protocol has no third party, no ledger and no escrow, so it cannot force a player who is about to lose to keep answering. Abort is treated as forfeit. This is the one property that a smart contract with deposits would add, and it is the one we do not attempt. What the protocol does provide is public verifiability: every message is non-interactive and checkable from $\pp$ and the transcript, so any observer, or an arbiter consulted after the fact, can determine which player sent an invalid message or stopped sending, without learning anything beyond the transcript. If the messages are signed under the players' identities this attribution is non-repudiable.
+
+\paragraph{Setup and model.}
+Binding rests on the discrete logarithm assumption in $\G$ and knowledge extraction on the random oracle model for $H$, as is usual for Fiat--Shamir. The generators $g,h$ must be such that neither player knows $\xi$; hashing to the group from fixed strings achieves this without a trusted party. Privacy (Theorem~\ref{thm:privacy}) needs neither assumption and holds against unbounded adversaries. The simulation-based statement (Corollary~\ref{cor:simulation}) needs a trapdoor for $h$, which is the standard price for straight-line simulation of equivocable commitments.
+
+\paragraph{Context binding.}
+The identities and session identifier in $\ctx$ are not decoration. Without them, a player could copy the opponent's $(\mathbf E,\pi)$ as its own commitment. Such a player cannot answer shots it has not first asked itself, so the attack fails in play, but it would break the knowledge-extraction argument of Theorem~\ref{thm:binding}, which relies on the honest player's oracle queries being disjoint from the forked one. Including $\id$ in the hash input makes a proof valid only for the party that produced it, and $\sid$ prevents reuse across sessions.
+
+\paragraph{What is and is not hidden.}
+Theorem~\ref{thm:privacy} says that an opponent learns exactly the ideal answers: hits, misses, and sunk-counts by length. The number of ships and their lengths are public, as in the physical game. A player's unrevealed cells stay hidden after the game ends, which matters when the same placement is reused or when the loser's board should not be exposed. The first mover has a small advantage in the ideal game; the coin flip in the commit phase makes it symmetric.
+
+\begin{thebibliography}{10}
+\bibitem{bulletproofs}
+B.~B\"unz, J.~Bootle, D.~Boneh, A.~Poelstra, P.~Wuille, and G.~Maxwell.
+\newblock Bulletproofs: Short proofs for confidential transactions and more.
+\newblock \emph{IEEE Symposium on Security and Privacy}, 2018.
+
+\bibitem{bellare-neven}
+M.~Bellare and G.~Neven.
+\newblock Multi-signatures in the plain public-key model and a general forking lemma.
+\newblock \emph{ACM CCS}, 2006.
+
+\bibitem{blum-coin}
+M.~Blum.
+\newblock Coin flipping by telephone: A protocol for solving impossible problems.
+\newblock \emph{ACM SIGACT News}, 15(1), 1983.
+
+\bibitem{cramer-damgard-schoenmakers}
+R.~Cramer, I.~Damg\r{a}rd, and B.~Schoenmakers.
+\newblock Proofs of partial knowledge and simplified design of witness hiding protocols.
+\newblock \emph{CRYPTO}, 1994.
+
+\bibitem{damgard-sigma}
+I.~Damg\r{a}rd.
+\newblock On $\Sigma$-protocols.
+\newblock Lecture notes, Aarhus University, 2010.
+
+\bibitem{fiat-shamir}
+A.~Fiat and A.~Shamir.
+\newblock How to prove yourself: Practical solutions to identification and signature problems.
+\newblock \emph{CRYPTO}, 1986.
+
+\bibitem{groth-kohlweiss}
+J.~Groth and M.~Kohlweiss.
+\newblock One-out-of-many proofs: Or how to leak a secret and spend a coin.
+\newblock \emph{EUROCRYPT}, 2015.
+
+\bibitem{pedersen}
+T.~P.~Pedersen.
+\newblock Non-interactive and information-theoretic secure verifiable secret sharing.
+\newblock \emph{CRYPTO}, 1991.
+
+\bibitem{pointcheval-stern}
+D.~Pointcheval and J.~Stern.
+\newblock Security arguments for digital signatures and blind signatures.
+\newblock \emph{Journal of Cryptology}, 13(3), 2000.
+
+\bibitem{schnorr}
+C.~P.~Schnorr.
+\newblock Efficient signature generation by smart cards.
+\newblock \emph{Journal of Cryptology}, 4(3), 1991.
+\end{thebibliography}
+
+\end{document}
