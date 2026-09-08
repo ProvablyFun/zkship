@@ -167,6 +167,20 @@ impl VerifiedBoardCommitment {
     }
 }
 
+#[cfg(test)]
+impl VerifiedBoardCommitment {
+    /// Skips proof verification; test-only.
+    pub(crate) fn from_parts_for_test(
+        entry_commitments: Vec<RistrettoPoint>,
+        cell_commitments: [RistrettoPoint; N],
+    ) -> VerifiedBoardCommitment {
+        VerifiedBoardCommitment {
+            entry_commitments,
+            cell_commitments,
+        }
+    }
+}
+
 /// π_wf (paper Construction 4.1).
 pub struct WfProof {
     pub x: Scalar,

@@ -89,16 +89,25 @@ impl fmt::Display for PlacementError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             PlacementError::WrongLength { expected, actual } => {
-                write!(f, "placement vector has length {actual}, expected {expected}")
+                write!(
+                    f,
+                    "placement vector has length {actual}, expected {expected}"
+                )
             }
             PlacementError::NonBitEntry { position, value } => {
                 write!(f, "placement entry {position} is not a bit (value {value})")
             }
             PlacementError::BlockNotOneHot { block, sum } => {
-                write!(f, "block {block} selects {sum} positions, expected exactly 1")
+                write!(
+                    f,
+                    "block {block} selects {sum} positions, expected exactly 1"
+                )
             }
             PlacementError::OverlappingShips { cell } => {
-                write!(f, "cell {cell} is covered by more than one selected position")
+                write!(
+                    f,
+                    "cell {cell} is covered by more than one selected position"
+                )
             }
         }
     }
@@ -229,6 +238,10 @@ impl Geometry {
         FLEET_LENGTHS[block]
     }
 
+    pub fn ship_count_of_length(&self, length: u8) -> u8 {
+        FLEET_LENGTHS.iter().filter(|&&l| l == length).count() as u8
+    }
+
     /// Row `M_i` of the incidence matrix, as sorted position indices.
     pub fn support_of_cell(&self, cell: CellIndex) -> &[usize] {
         &self.support_of_cell[cell.index() as usize]
@@ -245,7 +258,10 @@ impl Geometry {
         // (L1)
         for (p, &v) in e.iter().enumerate() {
             if v > 1 {
-                return Err(PlacementError::NonBitEntry { position: p, value: v });
+                return Err(PlacementError::NonBitEntry {
+                    position: p,
+                    value: v,
+                });
             }
         }
         // (L2)
@@ -456,7 +472,9 @@ mod tests {
         assert_eq!(geometry.block_range(3), 420..580);
         assert_eq!(geometry.block_range(4), 580..760);
         for p in 0..P {
-            assert!(geometry.block_range(geometry.block_of_position(p)).contains(&p));
+            assert!(geometry
+                .block_range(geometry.block_of_position(p))
+                .contains(&p));
         }
     }
 
@@ -513,14 +531,8 @@ mod tests {
         let geometry = Parameters::standard_v1().geometry();
         let support = |index: u8| geometry.support_of_cell(CellIndex::from_index(index).unwrap());
 
-        assert_eq!(
-            support(0),
-            [0, 60, 120, 190, 260, 340, 420, 500, 580, 670]
-        );
-        assert_eq!(
-            support(9),
-            [5, 114, 126, 253, 267, 412, 427, 572, 588, 751]
-        );
+        assert_eq!(support(0), [0, 60, 120, 190, 260, 340, 420, 500, 580, 670]);
+        assert_eq!(support(9), [5, 114, 126, 253, 267, 412, 427, 572, 588, 751]);
         assert_eq!(
             support(90),
             [54, 65, 183, 196, 332, 347, 492, 507, 661, 678]
@@ -562,15 +574,15 @@ mod tests {
         assert_eq!(
             support(44),
             [
-                24, 25, 26, 27, 28, 84, 85, 86, 87, 88, 149, 150, 151, 152, 219, 220, 221, 222, 294,
-                295, 296, 374, 375, 376, 454, 455, 456, 534, 535, 536, 619, 620, 709, 710
+                24, 25, 26, 27, 28, 84, 85, 86, 87, 88, 149, 150, 151, 152, 219, 220, 221, 222,
+                294, 295, 296, 374, 375, 376, 454, 455, 456, 534, 535, 536, 619, 620, 709, 710
             ]
         );
         assert_eq!(
             support(55),
             [
-                31, 32, 33, 34, 35, 91, 92, 93, 94, 95, 157, 158, 159, 160, 227, 228, 229, 230, 303,
-                304, 305, 383, 384, 385, 463, 464, 465, 543, 544, 545, 629, 630, 719, 720
+                31, 32, 33, 34, 35, 91, 92, 93, 94, 95, 157, 158, 159, 160, 227, 228, 229, 230,
+                303, 304, 305, 383, 384, 385, 463, 464, 465, 543, 544, 545, 629, 630, 719, 720
             ]
         );
 
