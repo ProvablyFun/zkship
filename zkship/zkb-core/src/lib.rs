@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod bp;
+pub mod fleet;
 pub mod game;
 pub mod openings;
 pub mod params;
