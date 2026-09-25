@@ -4,6 +4,7 @@ members = [
     "zkb-core",
     "zkb-session",
     "zkb-cli",
+    "zkb-bench",
 ]
 # fuzz/ needs nightly + sanitizers; kept out of the workspace.
 exclude = ["fuzz"]
