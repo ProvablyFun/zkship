@@ -21,14 +21,8 @@ curve25519-dalek = { version = "4.1.3", default-features = false, features = [
 # `cargo fuzz build` needs nightly; plain `cargo check` works on stable.
 
 [[bin]]
-name = "wf_proof_decode"
-path = "fuzz_targets/wf_proof_decode.rs"
-test = false
-doc = false
-
-[[bin]]
-name = "board_commitment_decode"
-path = "fuzz_targets/board_commitment_decode.rs"
+name = "setup_message_decode"
+path = "fuzz_targets/setup_message_decode.rs"
 test = false
 doc = false
 
