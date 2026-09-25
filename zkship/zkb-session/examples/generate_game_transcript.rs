@@ -5,17 +5,21 @@ use curve25519_dalek::scalar::Scalar;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use std::fmt::Write as _;
+use zkb_core::fleet::{Fleet, SHIP_BITS};
 use zkb_core::game::Role;
-use zkb_core::params::{CellIndex, Parameters, N, P};
+use zkb_core::params::{CellIndex, Parameters, Rules, N};
 use zkb_session::hello::{self, Hello};
 use zkb_session::identity::{ExpectedKey, IdentityKeypair, PeerAuthPolicy};
 use zkb_session::state::{AcceptOutcome, Session};
 
 const KEY_SEEDS: [[u8; 32]; 2] = [[0x11; 32], [0x22; 32]];
 const HELLO_RNG_SEEDS: [[u8; 32]; 2] = [[0x33; 32], [0x44; 32]];
-const PLACEMENTS: [[usize; 5]; 2] = [
-    [0, 134, 292, 460, 643], // cells [0-4] [20-23] [40-42] [50-52] [70-71]
-    [5, 127, 272, 444, 625], // cells [5-9] [10-13] [14-16] [30-32] [50-51]
+/// `row || col || vertical` per ship, fleet order (5, 4, 3, 3, 2).
+const FLEETS: [[u8; 15]; 2] = [
+    // cells [0-4] [20-23] [40-42] [50-52] [70-71]
+    [0, 0, 0, 2, 0, 0, 4, 0, 0, 5, 0, 0, 7, 0, 0],
+    // cells [5-9] [10-13] [14-16] [30-32] [50-51]
+    [0, 5, 0, 1, 0, 0, 1, 4, 0, 3, 0, 0, 5, 0, 0],
 ];
 const BLINDER_SEEDS: [[u8; 32]; 2] = [[0xA0; 32], [0xB0; 32]];
 const PROOF_RNG_SEEDS: [[u8; 32]; 2] = [[0xA1; 32], [0xB1; 32]];
@@ -25,21 +29,17 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn placement(positions: &[usize; 5]) -> Vec<u8> {
-    let mut e = vec![0u8; P];
-    for &p in positions {
-        e[p] = 1;
-    }
-    e
+fn fleet(bytes: &[u8; 15]) -> Fleet {
+    Fleet::from_bytes(bytes, Rules::Standard).expect("legal fleet")
 }
 
 fn blinders(seed: [u8; 32]) -> Vec<Scalar> {
     let mut rng = ChaCha20Rng::from_seed(seed);
-    (0..P).map(|_| Scalar::random(&mut rng)).collect()
+    (0..SHIP_BITS).map(|_| Scalar::random(&mut rng)).collect()
 }
 
 fn main() {
-    let params = Parameters::standard_v1();
+    let params = Parameters::standard();
     let params_id = *params.params_id();
 
     let keypairs: Vec<IdentityKeypair> = KEY_SEEDS.iter().map(IdentityKeypair::from_seed).collect();
@@ -75,7 +75,7 @@ fn main() {
         auth(&keypairs[b_idx]),
         *bootstrap.sid(),
         *bootstrap.genesis_hash(),
-        placement(&PLACEMENTS[0]),
+        fleet(&FLEETS[0]),
         blinders(BLINDER_SEEDS[0]),
     )
     .unwrap();
@@ -86,7 +86,7 @@ fn main() {
         auth(&keypairs[a_idx]),
         *bootstrap.sid(),
         *bootstrap.genesis_hash(),
-        placement(&PLACEMENTS[1]),
+        fleet(&FLEETS[1]),
         blinders(BLINDER_SEEDS[1]),
     )
     .unwrap();
@@ -162,13 +162,6 @@ fn main() {
     let winner_hits = 17u8;
     let winner_sunk_total = 5u8;
 
-    let positions = |idx: usize| {
-        PLACEMENTS[idx]
-            .iter()
-            .map(|p| p.to_string())
-            .collect::<Vec<_>>()
-            .join(",")
-    };
     let hello_of_role = |role: Role| {
         let idx = if role_of[0] == role { 0 } else { 1 };
         hex(&hellos[idx].encode())
@@ -185,14 +178,14 @@ fn main() {
         "# regenerate: cargo run -p zkb-session --example generate_game_transcript"
     )
     .unwrap();
-    writeln!(out, "profile = zkbattleship/reference/v1").unwrap();
+    writeln!(out, "profile = zkbattleship/paper/v1").unwrap();
     writeln!(out, "params_id = {}", hex(params.params_id())).unwrap();
     writeln!(out, "key_seed_role_a = {}", hex(&KEY_SEEDS[a_idx])).unwrap();
     writeln!(out, "key_seed_role_b = {}", hex(&KEY_SEEDS[b_idx])).unwrap();
     writeln!(out, "hello_role_a = {}", hello_of_role(Role::A)).unwrap();
     writeln!(out, "hello_role_b = {}", hello_of_role(Role::B)).unwrap();
-    writeln!(out, "placement_role_a = {}", positions(0)).unwrap();
-    writeln!(out, "placement_role_b = {}", positions(1)).unwrap();
+    writeln!(out, "fleet_role_a = {}", hex(&FLEETS[0])).unwrap();
+    writeln!(out, "fleet_role_b = {}", hex(&FLEETS[1])).unwrap();
     writeln!(
         out,
         "blinders_seed_role_a = chacha20rng(seed={})",

@@ -303,6 +303,7 @@ impl BoardShots {
 /// The defender's secrets for play: the fleet bits, the blinders, and the
 /// running hit counts and hit-blinder sums per ship. Zeroized on drop.
 #[derive(Zeroize, ZeroizeOnDrop)]
+#[cfg_attr(fuzzing, derive(Clone))]
 pub struct ResponderSecrets {
     bits: Vec<u8>,
     rho: Vec<Scalar>,
@@ -319,6 +320,20 @@ impl ResponderSecrets {
             hits: [0; K],
             hit_blinders: [Scalar::ZERO; K],
         }
+    }
+
+    /// Rekeys a nonce RNG with the defender's witness (the prover's hedge).
+    pub(crate) fn rekey(
+        &self,
+        builder: merlin::TranscriptRngBuilder,
+    ) -> merlin::TranscriptRngBuilder {
+        let mut blinders = zeroize::Zeroizing::new(Vec::with_capacity(32 * K));
+        for b in &self.hit_blinders {
+            blinders.extend_from_slice(b.as_bytes());
+        }
+        builder
+            .rekey_with_witness_bytes(b"bits", &self.bits)
+            .rekey_with_witness_bytes(b"hit-blinders", &blinders)
     }
 
     /// Mirrors `BoardShots::register` on the secret side. The updates touch

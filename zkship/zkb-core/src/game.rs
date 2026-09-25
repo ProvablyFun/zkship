@@ -1,17 +1,25 @@
-//! Pure deterministic game state (paper Construction 4.2); no I/O.
+//! Pure deterministic game state (paper Section 5); no I/O.
 //!
-//! Not in the paper: the game ends on BOTH sides at the same chain position.
-//! The shooter finishes on accepting its T-th verified hit; the defender
-//! finishes when it answers the shot conceding its T-th hit. After that no
-//! sender is expected, so both peers agree on the linear transcript.
+//! Paper Section 5.4 (not in the abstract): the game ends on BOTH sides at
+//! the same chain position. The shooter finishes on accepting its T-th
+//! verified hit; the defender finishes when it answers the shot conceding its
+//! T-th hit. After that no sender is expected, so both peers agree on the
+//! linear transcript.
+//! The T-th hit is always a sink announcement of the last ship.
 
-use crate::openings::{self, AnswerRejection, ShotAnswer, SUNK_REPORT_SIZE};
-use crate::params::{CellIndex, Geometry, Parameters, PlacementError, K, N, P, T};
-use crate::wf::VerifiedBoardCommitment;
+use crate::answers::{
+    self, AnswerContext, AnswerDecodeError, AnswerOutcome, AnswerRejection, BoardShots,
+    ResponderSecrets, ShotAnswer,
+};
+use crate::fleet::{Fleet, PlacementError, SHIP_BITS};
+use crate::params::{CellIndex, Parameters, K, T};
+use crate::setup::VerifiedSetup;
 use curve25519_dalek::ristretto::RistrettoPoint;
 use curve25519_dalek::scalar::Scalar;
+use merlin::Transcript;
+use rand_core::{CryptoRng, RngCore};
 use std::fmt;
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::Zeroizing;
 
 /// Fixed by the session bootstrap: lower identity key is A and commits first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,7 +48,12 @@ pub enum State {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ShotOutcome {
     Miss,
-    Hit { newly_sunk: u8 },
+    Hit,
+    /// Ship `ship` (fleet order 5, 4, 3, 3, 2) was announced sunk.
+    Sunk {
+        ship: u8,
+    },
+    /// The last ship sank.
     Win,
 }
 
@@ -81,7 +94,7 @@ impl fmt::Display for GameError {
                 write!(f, "blinder vector has length {actual}, expected {expected}")
             }
             GameError::WrongCommitmentCount { expected, actual } => {
-                write!(f, "got {actual} entry commitments, expected {expected}")
+                write!(f, "got {actual} ship-cell commitments, expected {expected}")
             }
             GameError::AnswerRejected(e) => write!(f, "answer rejected: {e}"),
             GameError::InternalInvariantFailure(what) => {
@@ -93,191 +106,108 @@ impl fmt::Display for GameError {
 
 impl std::error::Error for GameError {}
 
-#[derive(Zeroize, ZeroizeOnDrop)]
+/// Identities and session of the two proof contexts: the local player's
+/// answers are bound to `own_id`, the peer's to `peer_id`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GameContext {
+    pub own_id: [u8; 32],
+    pub peer_id: [u8; 32],
+    pub sid: [u8; 32],
+}
+
+/// Nonce source for answers: a Merlin transcript keyed by a 32-byte seed,
+/// advanced once per answer and hedged with the witness (see `answer_shot`).
+/// Only a not-sunk proof consumes the result.
 #[cfg_attr(fuzzing, derive(Clone))]
-struct ResponderSecrets {
-    e: Vec<u8>,
-    s: Vec<Scalar>,
-    sunk_counts: [u8; SUNK_REPORT_SIZE],
-    sunk_blinders: [Scalar; SUNK_REPORT_SIZE],
+struct SeededRng(Transcript);
+
+impl SeededRng {
+    fn new(seed: &[u8; 32]) -> SeededRng {
+        let mut transcript = Transcript::new(b"zkbattleship/paper/v1/answer-rng");
+        transcript.append_message(b"seed", seed);
+        SeededRng(transcript)
+    }
 }
 
-/// Public shot tracking with incremental sunk supports. `remaining_unshot_cells[p]`
-/// starts at the position's length; when it first reaches zero the position
-/// has entered W_{l,S}: E_p joins the public sum, and on the responder side
-/// (e_p, s_p) join the running (tau, theta). Update decisions are public;
-/// only the added scalars are secret.
-#[cfg_attr(fuzzing, derive(Clone))]
-pub struct BoardShots {
-    shot: [bool; N],
-    remaining_unshot_cells: Box<[u8]>,
-    fully_covered: Box<[bool]>,
-    sunk_commitments: [RistrettoPoint; SUNK_REPORT_SIZE],
-    secrets: Option<ResponderSecrets>,
-}
-
-fn length_index(geometry: &Geometry, length: u8) -> usize {
-    geometry
-        .distinct_lengths()
-        .iter()
-        .position(|&l| l == length)
-        .expect("position length is a distinct fleet length")
-}
-
-impl BoardShots {
-    fn new(params: &Parameters, secrets: Option<ResponderSecrets>) -> BoardShots {
-        let geometry = params.geometry();
-        let remaining_unshot_cells: Vec<u8> = (0..geometry.p())
-            .map(|p| geometry.cells_of_position(p).len() as u8)
-            .collect();
-        BoardShots {
-            shot: [false; N],
-            remaining_unshot_cells: remaining_unshot_cells.into_boxed_slice(),
-            fully_covered: vec![false; geometry.p()].into_boxed_slice(),
-            sunk_commitments: [RistrettoPoint::default(); SUNK_REPORT_SIZE],
-            secrets,
-        }
+impl RngCore for SeededRng {
+    fn next_u32(&mut self) -> u32 {
+        rand_core::impls::next_u32_via_fill(self)
     }
 
-    pub fn new_verifier(params: &Parameters) -> BoardShots {
-        Self::new(params, None)
+    fn next_u64(&mut self) -> u64 {
+        rand_core::impls::next_u64_via_fill(self)
     }
 
-    pub fn new_responder(
-        params: &Parameters,
-        e: Vec<u8>,
-        s: Vec<Scalar>,
-    ) -> Result<BoardShots, GameError> {
-        // Wrap secrets in the zeroizing container before any fallible check.
-        let secrets = ResponderSecrets {
-            e,
-            s,
-            sunk_counts: [0; SUNK_REPORT_SIZE],
-            sunk_blinders: [Scalar::ZERO; SUNK_REPORT_SIZE],
-        };
-        if secrets.s.len() != P {
-            return Err(GameError::WrongWitnessLength {
-                expected: P,
-                actual: secrets.s.len(),
-            });
-        }
-        params
-            .geometry()
-            .validate_placement(&secrets.e)
-            .map_err(GameError::IllegalPlacement)?;
-        Ok(Self::new(params, Some(secrets)))
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        self.0.challenge_bytes(b"rng", dest);
     }
 
-    fn clear_secrets(&mut self) {
-        self.secrets = None;
-    }
-
-    pub fn is_shot(&self, cell: CellIndex) -> bool {
-        self.shot[cell.index() as usize]
-    }
-
-    pub fn sunk_commitments(&self) -> &[RistrettoPoint; SUNK_REPORT_SIZE] {
-        &self.sunk_commitments
-    }
-
-    /// The cell joins the public shot set before the answer is computed.
-    /// Rejection leaves shot history and running sums unchanged.
-    pub fn register_shot(
-        &mut self,
-        geometry: &Geometry,
-        entry_commitments: &[RistrettoPoint],
-        cell: CellIndex,
-    ) -> Result<(), GameError> {
-        if entry_commitments.len() != P {
-            return Err(GameError::WrongCommitmentCount {
-                expected: P,
-                actual: entry_commitments.len(),
-            });
-        }
-        if self.is_shot(cell) {
-            return Err(GameError::RepeatedShot { cell: cell.index() });
-        }
-        self.shot[cell.index() as usize] = true;
-        for &p in geometry.support_of_cell(cell) {
-            let remaining = &mut self.remaining_unshot_cells[p];
-            *remaining = remaining
-                .checked_sub(1)
-                .expect("a counter decrements at most once per covering cell");
-            if *remaining == 0 && !self.fully_covered[p] {
-                self.fully_covered[p] = true;
-                let index = length_index(geometry, geometry.cells_of_position(p).len() as u8);
-                self.sunk_commitments[index] += entry_commitments[p];
-                if let Some(secrets) = &mut self.secrets {
-                    secrets.sunk_counts[index] += secrets.e[p];
-                    secrets.sunk_blinders[index] += secrets.s[p];
-                }
-            }
-        }
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
+        self.fill_bytes(dest);
         Ok(())
     }
-
-    #[allow(clippy::type_complexity)]
-    fn responder_material(
-        &self,
-    ) -> Option<(
-        &[u8],
-        &[Scalar],
-        &[u8; SUNK_REPORT_SIZE],
-        &[Scalar; SUNK_REPORT_SIZE],
-    )> {
-        self.secrets.as_ref().map(|secrets| {
-            (
-                secrets.e.as_slice(),
-                secrets.s.as_slice(),
-                &secrets.sunk_counts,
-                &secrets.sunk_blinders,
-            )
-        })
-    }
 }
+
+impl CryptoRng for SeededRng {}
 
 #[cfg_attr(fuzzing, derive(Clone))]
 pub struct Game<'a> {
     params: &'a Parameters,
     local_role: Role,
     state: State,
+    ctx: GameContext,
+    own_ship_cells: Vec<RistrettoPoint>,
     own_board: BoardShots,
-    own_entry_commitments: Vec<RistrettoPoint>,
+    own_secrets: Option<Box<ResponderSecrets>>,
+    answer_rng: SeededRng,
+    peer: VerifiedSetup,
     peer_board: BoardShots,
-    peer_verified: VerifiedBoardCommitment,
-    accepted_sunk_counts: [u8; SUNK_REPORT_SIZE],
     verified_hits: u8,
     hits_conceded: u8,
 }
 
 impl<'a> Game<'a> {
+    /// `own_ship_cells` are the commitments of the local setup; `rho` their
+    /// blinders; `answer_seed` keys the not-sunk proof nonces.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         params: &'a Parameters,
         local_role: Role,
         first_mover: Role,
-        own_entry_commitments: Vec<RistrettoPoint>,
-        e: Vec<u8>,
-        s: Vec<Scalar>,
-        peer_verified: VerifiedBoardCommitment,
+        ctx: GameContext,
+        own_ship_cells: Vec<RistrettoPoint>,
+        fleet: &Fleet,
+        rho: Vec<Scalar>,
+        answer_seed: &[u8; 32],
+        peer: VerifiedSetup,
     ) -> Result<Game<'a>, GameError> {
-        let own_board = BoardShots::new_responder(params, e, s)?;
-        if own_entry_commitments.len() != P {
-            return Err(GameError::WrongCommitmentCount {
-                expected: P,
-                actual: own_entry_commitments.len(),
+        let rho = Zeroizing::new(rho);
+        if rho.len() != SHIP_BITS {
+            return Err(GameError::WrongWitnessLength {
+                expected: SHIP_BITS,
+                actual: rho.len(),
             });
         }
+        if own_ship_cells.len() != SHIP_BITS {
+            return Err(GameError::WrongCommitmentCount {
+                expected: SHIP_BITS,
+                actual: own_ship_cells.len(),
+            });
+        }
+        Fleet::new(*fleet.ships(), params.rules()).map_err(GameError::IllegalPlacement)?;
         Ok(Game {
             params,
             local_role,
             state: State::AwaitingShot {
                 shooter: first_mover,
             },
-            own_board,
-            own_entry_commitments,
-            peer_board: BoardShots::new_verifier(params),
-            peer_verified,
-            accepted_sunk_counts: [0; SUNK_REPORT_SIZE],
+            ctx,
+            own_ship_cells,
+            own_board: BoardShots::default(),
+            own_secrets: Some(Box::new(ResponderSecrets::new(fleet, rho.to_vec()))),
+            answer_rng: SeededRng::new(answer_seed),
+            peer,
+            peer_board: BoardShots::default(),
             verified_hits: 0,
             hits_conceded: 0,
         })
@@ -291,18 +221,19 @@ impl<'a> Game<'a> {
         self.local_role
     }
 
-    /// Incremented only after a valid hit opening.
+    /// Incremented only after a valid hit or sink opening.
     pub fn verified_hits(&self) -> u8 {
         self.verified_hits
     }
 
-    pub fn accepted_sunk_counts(&self) -> [u8; SUNK_REPORT_SIZE] {
-        self.accepted_sunk_counts
-    }
-
-    /// Honest `b = 1` answers on the own board; T of them finish the game.
+    /// Honest hit answers on the own board; T of them finish the game.
     pub fn hits_conceded(&self) -> u8 {
         self.hits_conceded
+    }
+
+    /// Ships announced sunk on the peer's board, fleet order.
+    pub fn peer_sunk(&self) -> [bool; K] {
+        *self.peer_board.sunk()
     }
 
     pub fn shots_on_board(&self, role: Role) -> &BoardShots {
@@ -313,6 +244,10 @@ impl<'a> Game<'a> {
         }
     }
 
+    pub fn has_secrets(&self) -> bool {
+        self.own_secrets.is_some()
+    }
+
     pub fn fire_shot(&mut self, cell: CellIndex) -> Result<u8, GameError> {
         let State::AwaitingShot { shooter } = self.state else {
             return Err(GameError::WrongState);
@@ -320,11 +255,10 @@ impl<'a> Game<'a> {
         if shooter != self.local_role {
             return Err(GameError::WrongState);
         }
-        self.peer_board.register_shot(
-            self.params.geometry(),
-            self.peer_verified.entry_commitments(),
-            cell,
-        )?;
+        if self.peer_board.is_shot(cell) {
+            return Err(GameError::RepeatedShot { cell: cell.index() });
+        }
+        self.peer_board.register(self.peer.ship_cells(), cell);
         self.state = State::AwaitingAnswer {
             shooter: self.local_role,
             cell,
@@ -341,8 +275,17 @@ impl<'a> Game<'a> {
             return Err(GameError::WrongState);
         }
         let cell = CellIndex::from_index(cell).ok_or(GameError::OutOfRangeShot { cell })?;
-        self.own_board
-            .register_shot(self.params.geometry(), &self.own_entry_commitments, cell)?;
+        if self.own_board.is_shot(cell) {
+            return Err(GameError::RepeatedShot { cell: cell.index() });
+        }
+        let secrets = self
+            .own_secrets
+            .as_mut()
+            .ok_or(GameError::InternalInvariantFailure(
+                "shot received but the own-board secrets are gone",
+            ))?;
+        self.own_board.register(&self.own_ship_cells, cell);
+        secrets.register(cell);
         self.state = State::AwaitingAnswer {
             shooter: self.local_role.other(),
             cell,
@@ -359,14 +302,28 @@ impl<'a> Game<'a> {
         if shooter == self.local_role {
             return Err(GameError::WrongState);
         }
-        let (e, s, counts, blinders) =
-            self.own_board
-                .responder_material()
-                .ok_or(GameError::InternalInvariantFailure(
-                    "answer owed but the own-board secrets are gone",
-                ))?;
-        let answer = openings::answer_shot(self.params, cell, e, s, counts, blinders);
-        // `b` is public (it is being sent).
+        let secrets = self
+            .own_secrets
+            .as_ref()
+            .ok_or(GameError::InternalInvariantFailure(
+                "answer owed but the own-board secrets are gone",
+            ))?;
+        let ctx = AnswerContext {
+            defender_id: &self.ctx.own_id,
+            sid: &self.ctx.sid,
+        };
+        // Hedge the seeded nonce source with the secrets, as the setup prover does.
+        let mut hedge = Transcript::new(b"zkbattleship/paper/v1/answer-hedge");
+        hedge.append_message(b"shots", &[self.own_board.shots()]);
+        let mut rng = secrets
+            .rekey(hedge.build_rng())
+            .finalize(&mut self.answer_rng);
+        let answer =
+            answers::answer_shot(self.params, &ctx, &self.own_board, secrets, cell, &mut rng);
+        if let ShotAnswer::Sunk { ship, .. } = &answer {
+            self.own_board.mark_sunk(*ship);
+        }
+        // Whether it hit is public (it is being sent).
         if answer.is_hit() {
             self.hits_conceded += 1;
         }
@@ -380,6 +337,12 @@ impl<'a> Game<'a> {
         Ok(answer)
     }
 
+    /// Parses an answer to the local player's pending shot; the hit proof's
+    /// length depends on the peer's unsunk ships.
+    pub fn decode_answer(&self, bytes: &[u8]) -> Result<ShotAnswer, AnswerDecodeError> {
+        ShotAnswer::decode(bytes, self.peer_board.unsunk_count())
+    }
+
     /// Session-layer forfeit; erases secrets, keeps public tallies.
     pub fn finish_by_forfeit(&mut self, winner: Role) -> Result<(), GameError> {
         if matches!(self.state, State::Finished { .. }) {
@@ -391,11 +354,11 @@ impl<'a> Game<'a> {
 
     fn finish(&mut self, winner: Role) {
         self.state = State::Finished { winner };
-        self.own_board.clear_secrets();
+        self.own_secrets = None;
     }
 
-    /// Uses the cached C_i and the public running sunk sums. At T hits the
-    /// sunk counts must sum to K, else class-D internal failure.
+    /// At T verified hits every ship must have been announced sunk, else
+    /// class-D internal failure.
     pub fn accept_answer(&mut self, answer: &ShotAnswer) -> Result<ShotOutcome, GameError> {
         let State::AwaitingAnswer { shooter, cell } = self.state else {
             return Err(GameError::WrongState);
@@ -403,31 +366,36 @@ impl<'a> Game<'a> {
         if shooter != self.local_role {
             return Err(GameError::WrongState);
         }
-        let outcome = openings::verify_answer(
+        let ctx = AnswerContext {
+            defender_id: &self.ctx.peer_id,
+            sid: &self.ctx.sid,
+        };
+        let outcome = answers::verify_answer(
             self.params,
-            &self.peer_verified.cell_commitments()[cell.index() as usize],
-            self.peer_board.sunk_commitments(),
-            &self.accepted_sunk_counts,
-            self.verified_hits,
+            &ctx,
+            self.peer.ship_cells(),
+            self.peer.cell_commitments(),
+            &self.peer_board,
+            cell,
             answer,
         )
         .map_err(GameError::AnswerRejected)?;
 
-        if !outcome.hit {
-            self.state = State::AwaitingShot {
-                shooter: self.local_role.other(),
-            };
-            return Ok(ShotOutcome::Miss);
+        let result = match outcome {
+            AnswerOutcome::Miss => ShotOutcome::Miss,
+            AnswerOutcome::Hit => ShotOutcome::Hit,
+            AnswerOutcome::Sunk { ship, .. } => {
+                self.peer_board.mark_sunk(ship);
+                ShotOutcome::Sunk { ship }
+            }
+        };
+        if result != ShotOutcome::Miss {
+            self.verified_hits += 1;
         }
-
-        let newly_sunk: u8 =
-            outcome.sunk_counts.iter().sum::<u8>() - self.accepted_sunk_counts.iter().sum::<u8>();
-        self.accepted_sunk_counts = outcome.sunk_counts;
-        self.verified_hits += 1;
         if self.verified_hits == T as u8 {
-            if self.accepted_sunk_counts.iter().sum::<u8>() != K as u8 {
+            if self.peer_board.unsunk_count() != 0 {
                 return Err(GameError::InternalInvariantFailure(
-                    "hit count reached T but cumulative sunk counts do not sum to K",
+                    "hit count reached T but some ship was never announced sunk",
                 ));
             }
             self.finish(self.local_role);
@@ -436,44 +404,21 @@ impl<'a> Game<'a> {
         self.state = State::AwaitingShot {
             shooter: self.local_role.other(),
         };
-        Ok(ShotOutcome::Hit { newly_sunk })
+        Ok(result)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pedersen;
-    use crate::wf::{self};
-    use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
+    use crate::fleet::tests::{fleet_a, fleet_b};
+    use crate::setup;
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
-    use sha2::Sha512;
 
-    fn test_params() -> Parameters {
-        let h = RistrettoPoint::hash_from_bytes::<Sha512>(b"zkbattleship/test-only/game-H");
-        Parameters::from_test_generators(RISTRETTO_BASEPOINT_POINT, h)
-    }
-
-    fn placement_a() -> Vec<u8> {
-        let mut e = vec![0u8; P];
-        e[0] = 1; // cells 0-4
-        e[134] = 1; // cells 20-23
-        e[292] = 1; // cells 40-42
-        e[460] = 1; // cells 50-52
-        e[643] = 1; // cells 70-71
-        e
-    }
-
-    fn placement_b() -> Vec<u8> {
-        let mut e = vec![0u8; P];
-        e[5] = 1; // cells 5-9
-        e[127] = 1; // cells 10-13
-        e[272] = 1; // cells 14-16
-        e[444] = 1; // cells 30-32
-        e[625] = 1; // cells 50-51
-        e
-    }
+    const ID_A: [u8; 32] = [0x0A; 32];
+    const ID_B: [u8; 32] = [0x0B; 32];
+    const SID: [u8; 32] = [0x77; 32];
 
     fn rng(seed: u8) -> ChaCha20Rng {
         ChaCha20Rng::from_seed([seed; 32])
@@ -481,284 +426,258 @@ mod tests {
 
     fn blinders(seed: u8) -> Vec<Scalar> {
         let mut rng = rng(seed);
-        (0..P).map(|_| Scalar::random(&mut rng)).collect()
+        (0..SHIP_BITS).map(|_| Scalar::random(&mut rng)).collect()
     }
 
-    fn identity_game(params: &Parameters) -> Game<'_> {
-        let identity = RistrettoPoint::default;
-        let peer = VerifiedBoardCommitment::from_parts_for_test(
-            (0..P).map(|_| identity()).collect(),
-            std::array::from_fn(|_| identity()),
+    fn context(role: Role) -> GameContext {
+        let (own_id, peer_id) = match role {
+            Role::A => (ID_A, ID_B),
+            Role::B => (ID_B, ID_A),
+        };
+        GameContext {
+            own_id,
+            peer_id,
+            sid: SID,
+        }
+    }
+
+    /// Two games wired to each other with real setup proofs.
+    pub(crate) fn pair<'a>(
+        params: &'a Parameters,
+        fleets: [&Fleet; 2],
+        first_mover: Role,
+    ) -> (Game<'a>, Game<'a>) {
+        let rho = [blinders(0xA0), blinders(0xB0)];
+        let ids = [ID_A, ID_B];
+        let msgs: Vec<setup::SetupMessage> = (0..2)
+            .map(|k| {
+                setup::prove_with_rng(
+                    params,
+                    &ids[k],
+                    &SID,
+                    fleets[k],
+                    &rho[k],
+                    rng(0xC0 + k as u8),
+                )
+                .unwrap()
+            })
+            .collect();
+        let verified: Vec<VerifiedSetup> = (0..2)
+            .map(|k| setup::verify(params, &ids[k], &SID, &msgs[k]).unwrap())
+            .collect();
+        let game = |k: usize, role: Role| {
+            Game::new(
+                params,
+                role,
+                first_mover,
+                context(role),
+                msgs[k].ship_cells().to_vec(),
+                fleets[k],
+                rho[k].clone(),
+                &[0x5E + k as u8; 32],
+                verified[1 - k].clone(),
+            )
+            .unwrap()
+        };
+        (game(0, Role::A), game(1, Role::B))
+    }
+
+    /// Plays one turn over the wire encoding.
+    pub(crate) fn turn(attacker: &mut Game, attacked: &mut Game, cell: CellIndex) -> ShotOutcome {
+        let byte = attacker.fire_shot(cell).unwrap();
+        attacked.receive_shot(byte).unwrap();
+        let answer = attacked.answer_shot().unwrap();
+        let decoded = attacker.decode_answer(&answer.encode()).unwrap();
+        assert_eq!(decoded, answer);
+        attacker.accept_answer(&decoded).unwrap()
+    }
+
+    #[test]
+    fn honest_full_game_completes() {
+        for params in [Parameters::standard(), Parameters::no_touch()] {
+            let (fa, fb) = (fleet_a(), fleet_b());
+            let (mut game_a, mut game_b) = pair(params, [&fa, &fb], Role::A);
+            let mut current = Role::A;
+            let mut sunk_seen = Vec::new();
+            let winner = loop {
+                let defender = current.other();
+                let (attacker, attacked) = match current {
+                    Role::A => (&mut game_a, &mut game_b),
+                    Role::B => (&mut game_b, &mut game_a),
+                };
+                let cell = (0..100u8)
+                    .map(|i| CellIndex::from_index(i).unwrap())
+                    .find(|c| !attacker.shots_on_board(defender).is_shot(*c))
+                    .expect("unshot cells remain");
+                match turn(attacker, attacked, cell) {
+                    ShotOutcome::Win => break current,
+                    ShotOutcome::Sunk { ship } => {
+                        if current == Role::A {
+                            sunk_seen.push(ship);
+                        }
+                        current = defender;
+                    }
+                    ShotOutcome::Miss | ShotOutcome::Hit => current = defender,
+                }
+            };
+            // A sweeps rows 0-9 and reaches B's column fleet's last cell first.
+            assert_eq!(winner, Role::A);
+            assert_eq!(sunk_seen.len(), K - 1);
+            assert_eq!(game_a.state(), State::Finished { winner: Role::A });
+            assert_eq!(game_a.verified_hits(), T as u8);
+            assert_eq!(game_a.peer_sunk(), [true; K]);
+            assert!(game_b.verified_hits() < T as u8);
+            assert!(!game_a.has_secrets() && !game_b.has_secrets());
+            assert_eq!(game_b.state(), State::Finished { winner: Role::A });
+            assert_eq!(game_b.hits_conceded(), T as u8);
+            assert_eq!(game_a.hits_conceded(), game_b.verified_hits());
+            let cell = CellIndex::from_index(99).unwrap();
+            assert_eq!(game_a.fire_shot(cell), Err(GameError::WrongState));
+            assert_eq!(game_b.receive_shot(99), Err(GameError::WrongState));
+            assert_eq!(game_b.answer_shot(), Err(GameError::WrongState));
+        }
+    }
+
+    #[test]
+    fn state_machine_rejects_wrong_state_out_of_range_and_repeated_shots() {
+        let (fa, fb) = (fleet_a(), fleet_b());
+        let (mut game_a, mut game_b) = pair(Parameters::standard(), [&fa, &fb], Role::A);
+        assert_eq!(game_a.state(), State::AwaitingShot { shooter: Role::A });
+        assert_eq!(game_a.receive_shot(3), Err(GameError::WrongState));
+        assert_eq!(game_a.answer_shot(), Err(GameError::WrongState));
+        assert_eq!(
+            game_b.fire_shot(CellIndex::from_index(3).unwrap()),
+            Err(GameError::WrongState)
         );
-        Game::new(
-            params,
-            Role::A,
-            Role::A,
-            (0..P).map(|_| identity()).collect(),
-            placement_a(),
-            vec![Scalar::ZERO; P],
-            peer,
-        )
-        .unwrap()
+
+        let cell = CellIndex::from_index(10).unwrap();
+        assert_eq!(turn(&mut game_a, &mut game_b, cell), ShotOutcome::Miss);
+        assert_eq!(game_a.state(), State::AwaitingShot { shooter: Role::B });
+        assert_eq!(
+            game_a.receive_shot(200),
+            Err(GameError::OutOfRangeShot { cell: 200 })
+        );
+        assert_eq!(turn(&mut game_b, &mut game_a, cell), ShotOutcome::Miss);
+        assert_eq!(
+            game_a.fire_shot(cell),
+            Err(GameError::RepeatedShot { cell: 10 })
+        );
+        // B cannot be made to answer the same cell twice either.
+        game_a
+            .fire_shot(CellIndex::from_index(11).unwrap())
+            .unwrap();
+        assert_eq!(
+            game_b.receive_shot(10),
+            Err(GameError::RepeatedShot { cell: 10 })
+        );
+    }
+
+    #[test]
+    fn answers_are_bound_to_the_defender() {
+        let (fa, fb) = (fleet_a(), fleet_b());
+        let (mut game_a, mut game_b) = pair(Parameters::standard(), [&fa, &fb], Role::A);
+        // B's column 9 ship is hit at cell 9; a replay of B's hit proof
+        // against A's context must fail.
+        let cell = CellIndex::from_index(9).unwrap();
+        let byte = game_a.fire_shot(cell).unwrap();
+        game_b.receive_shot(byte).unwrap();
+        let answer = game_b.answer_shot().unwrap();
+        let mut wrong = game_a.clone_for_test();
+        wrong.ctx.peer_id = ID_A;
+        assert!(matches!(
+            wrong.accept_answer(&answer),
+            Err(GameError::AnswerRejected(
+                AnswerRejection::NotSunkProofFailed
+            ))
+        ));
+        assert_eq!(game_a.accept_answer(&answer), Ok(ShotOutcome::Hit));
     }
 
     #[test]
     fn forfeit_erases_secrets_and_stops_game() {
-        let mut game = identity_game(Parameters::standard_v1());
-        assert!(game.own_board.secrets.is_some());
+        let (fa, fb) = (fleet_a(), fleet_b());
+        let (mut game, _) = pair(Parameters::standard(), [&fa, &fb], Role::A);
+        assert!(game.has_secrets());
         game.finish_by_forfeit(Role::B).unwrap();
         assert_eq!(game.state(), State::Finished { winner: Role::B });
-        assert!(game.own_board.secrets.is_none());
+        assert!(!game.has_secrets());
         assert_eq!(game.finish_by_forfeit(Role::A), Err(GameError::WrongState));
         assert_eq!(game.receive_shot(0), Err(GameError::WrongState));
         assert_eq!(game.answer_shot(), Err(GameError::WrongState));
     }
 
     #[test]
-    fn state_machine_rejects_wrong_state_out_of_range_and_repeated_shots() {
-        let params = test_params();
-        let mut game = identity_game(&params);
-        assert_eq!(game.state(), State::AwaitingShot { shooter: Role::A });
-
-        assert_eq!(game.receive_shot(3), Err(GameError::WrongState));
-        assert_eq!(game.answer_shot(), Err(GameError::WrongState));
-
-        let cell = CellIndex::from_index(10).unwrap();
-        assert_eq!(game.fire_shot(cell), Ok(10));
-        assert_eq!(game.fire_shot(cell), Err(GameError::WrongState));
-        assert_eq!(game.receive_shot(3), Err(GameError::WrongState));
-
-        // Miss with rho = 0 against the identity C_10.
-        let outcome = game
-            .accept_answer(&ShotAnswer::Miss { rho: Scalar::ZERO })
-            .unwrap();
-        assert_eq!(outcome, ShotOutcome::Miss);
-        assert_eq!(game.state(), State::AwaitingShot { shooter: Role::B });
-
-        assert_eq!(
-            game.receive_shot(200),
-            Err(GameError::OutOfRangeShot { cell: 200 })
-        );
-        assert_eq!(game.receive_shot(60), Ok(()));
-        assert_eq!(game.receive_shot(4), Err(GameError::WrongState));
-        let answer = game.answer_shot().unwrap();
-        assert!(!answer.is_hit()); // cell 60 is not covered by placement_a
-        assert_eq!(
-            game.fire_shot(cell),
-            Err(GameError::RepeatedShot { cell: 10 })
-        );
-    }
-
-    #[test]
-    fn short_commitment_vector_does_not_mutate_shot_state() {
-        let params = Parameters::standard_v1();
-        let mut board = BoardShots::new_verifier(params);
-        let cell = CellIndex::from_index(0).unwrap();
-        let counters = board.remaining_unshot_cells.clone();
-        assert_eq!(
-            board.register_shot(params.geometry(), &[], cell),
-            Err(GameError::WrongCommitmentCount {
-                expected: P,
-                actual: 0
-            })
-        );
-        assert!(!board.is_shot(cell));
-        assert_eq!(board.remaining_unshot_cells, counters);
-        assert!(board.fully_covered.iter().all(|covered| !covered));
-        assert_eq!(
-            board.sunk_commitments,
-            [RistrettoPoint::default(); SUNK_REPORT_SIZE]
-        );
-    }
-
-    #[test]
-    fn board_shots_counters_match_from_scratch() {
-        let params = test_params();
-        let geometry = params.geometry();
-        let e = placement_a();
-        let s = blinders(0x51);
-        let entry: Vec<RistrettoPoint> = pedersen::commit_vector(&params, &e, &s);
-        let mut board = BoardShots::new_responder(&params, e.clone(), s.clone()).unwrap();
-        let mut shot = [false; N];
-
-        // Compare incremental state against a from-scratch recomputation.
-        let cells: [u8; 8] = [0, 1, 60, 2, 61, 3, 62, 4];
-        for &i in &cells {
-            let cell = CellIndex::from_index(i).unwrap();
-            board.register_shot(geometry, &entry, cell).unwrap();
-            shot[i as usize] = true;
-
-            for &length in geometry.distinct_lengths() {
-                let index = length_index(geometry, length);
-                let w = openings::sunk_positions(geometry, length, &shot);
-                let expected_sum: RistrettoPoint = w.iter().map(|&p| entry[p]).sum();
-                assert_eq!(board.sunk_commitments()[index], expected_sum);
-            }
-        }
-
-        let mut board2 = BoardShots::new_verifier(&params);
-        for &i in &[0u8, 1, 2, 3] {
-            board2
-                .register_shot(geometry, &entry, CellIndex::from_index(i).unwrap())
-                .unwrap();
-        }
-        assert_eq!(
-            board2.sunk_commitments()[length_index(geometry, 5)],
-            RistrettoPoint::default()
-        );
-        board2
-            .register_shot(geometry, &entry, CellIndex::from_index(4).unwrap())
-            .unwrap();
-        assert_eq!(
-            board2.sunk_commitments()[length_index(geometry, 5)],
-            entry[0]
-        );
-
-        let (e2, s2, counts, theta) = board.responder_material().unwrap();
-        assert_eq!(counts[length_index(geometry, 5)], 1);
-        assert_eq!(theta[length_index(geometry, 5)], s2[0]);
-        assert_eq!(e2[0], 1);
-        for &length in geometry.distinct_lengths() {
-            let index = length_index(geometry, length);
-            let w = openings::sunk_positions(geometry, length, &shot);
-            let tau: u8 = w.iter().map(|&p| e[p]).sum();
-            let expected_theta: Scalar = w.iter().map(|&p| s[p]).sum();
-            assert_eq!(counts[index], tau);
-            assert_eq!(theta[index], expected_theta);
-        }
-    }
-
-    /// Real proofs; slow in debug.
-    #[test]
-    fn honest_full_game_completes() {
-        let params = Parameters::standard_v1();
-        let id_a = [0x0A; 32];
-        let id_b = [0x0B; 32];
-        let sid = [0x77; 32];
-
-        let e_a = placement_a();
-        let e_b = placement_b();
-        let s_a = blinders(0xA0);
-        let s_b = blinders(0xB0);
-        let (board_a, proof_a) =
-            wf::prove_with_rng(params, &id_a, &sid, &e_a, &s_a, rng(0xA1)).unwrap();
-        let (board_b, proof_b) =
-            wf::prove_with_rng(params, &id_b, &sid, &e_b, &s_b, rng(0xB1)).unwrap();
-        let verified_a = wf::verify(params, &id_a, &sid, &board_a, &proof_a).unwrap();
-        let verified_b = wf::verify(params, &id_b, &sid, &board_b, &proof_b).unwrap();
-
-        let mut game_a = Game::new(
-            params,
-            Role::A,
-            Role::A,
-            board_a.entry_commitments().to_vec(),
-            e_a,
-            s_a,
-            verified_b,
-        )
-        .unwrap();
-        let mut game_b = Game::new(
-            params,
-            Role::B,
-            Role::A,
-            board_b.entry_commitments().to_vec(),
-            e_b,
-            s_b,
-            verified_a,
-        )
-        .unwrap();
-
-        let mut current = Role::A;
-        let winner = loop {
-            let defender = current.other();
-            let (attacker, attacked) = match current {
-                Role::A => (&mut game_a, &mut game_b),
-                Role::B => (&mut game_b, &mut game_a),
-            };
-            let cell = (0..N as u8)
-                .map(|i| CellIndex::from_index(i).unwrap())
-                .find(|c| !attacker.shots_on_board(defender).is_shot(*c))
-                .expect("unshot cells remain");
-            let byte = attacker.fire_shot(cell).unwrap();
-            attacked.receive_shot(byte).unwrap();
-            let answer = attacked.answer_shot().unwrap();
-            let bytes = answer.encode();
-            let decoded = ShotAnswer::decode(&bytes).unwrap();
-            match attacker.accept_answer(&decoded).unwrap() {
-                ShotOutcome::Win => break current,
-                ShotOutcome::Miss | ShotOutcome::Hit { .. } => current = defender,
-            }
+    fn construction_checks_witness_shapes() {
+        let params = Parameters::standard();
+        let (fa, fb) = (fleet_a(), fleet_b());
+        let (game, _) = pair(params, [&fa, &fb], Role::A);
+        let peer = game.peer.clone();
+        let cells = game.own_ship_cells.clone();
+        let make = |cells: Vec<RistrettoPoint>, rho: Vec<Scalar>| {
+            Game::new(
+                params,
+                Role::A,
+                Role::A,
+                context(Role::A),
+                cells,
+                &fa,
+                rho,
+                &[0; 32],
+                peer.clone(),
+            )
+            .err()
         };
-
-        assert_eq!(winner, Role::A);
-        assert_eq!(game_a.state(), State::Finished { winner: Role::A });
-        assert_eq!(game_a.verified_hits(), T as u8);
-        assert_eq!(game_a.accepted_sunk_counts().iter().sum::<u8>(), K as u8);
-        assert!(game_b.verified_hits() < T as u8);
-        assert_eq!(
-            game_a.fire_shot(CellIndex::from_index(0).unwrap()),
-            Err(GameError::WrongState)
-        );
-
-        // Loser finished at the same chain position by conceding T hits.
-        assert_eq!(game_b.state(), State::Finished { winner: Role::A });
-        assert_eq!(game_b.hits_conceded(), T as u8);
-        assert_eq!(game_a.hits_conceded(), game_b.verified_hits());
-        assert_eq!(
-            game_b.fire_shot(CellIndex::from_index(99).unwrap()),
-            Err(GameError::WrongState)
-        );
-        assert_eq!(game_b.receive_shot(99), Err(GameError::WrongState));
-        assert_eq!(game_b.answer_shot(), Err(GameError::WrongState));
-    }
-
-    #[test]
-    fn defender_finishes_when_conceding_the_last_hit() {
-        let params = test_params();
-        let geometry = params.geometry();
-        let identity = RistrettoPoint::default;
-        let peer = VerifiedBoardCommitment::from_parts_for_test(
-            (0..P).map(|_| identity()).collect(),
-            std::array::from_fn(|_| identity()),
-        );
-        let e = placement_a();
-        let mut game = Game::new(
-            &params,
-            Role::B,
-            Role::A,
-            (0..P).map(|_| identity()).collect(),
-            e.clone(),
-            vec![Scalar::ZERO; P],
-            peer,
+        assert!(matches!(
+            make(cells.clone(), blinders(1)[1..].to_vec()),
+            Some(GameError::WrongWitnessLength { .. })
+        ));
+        assert!(matches!(
+            make(cells[1..].to_vec(), blinders(1)),
+            Some(GameError::WrongCommitmentCount { .. })
+        ));
+        let touching = Fleet::new(
+            [
+                crate::fleet::tests::ship(0, 0, false),
+                crate::fleet::tests::ship(1, 0, false),
+                crate::fleet::tests::ship(4, 0, false),
+                crate::fleet::tests::ship(6, 0, false),
+                crate::fleet::tests::ship(8, 0, false),
+            ],
+            crate::params::Rules::Standard,
         )
         .unwrap();
+        assert!(matches!(
+            Game::new(
+                Parameters::no_touch(),
+                Role::A,
+                Role::A,
+                context(Role::A),
+                cells,
+                &touching,
+                blinders(1),
+                &[0; 32],
+                peer
+            ),
+            Err(GameError::IllegalPlacement(PlacementError::Touching { .. }))
+        ));
+    }
 
-        let mut occupied: Vec<u8> = Vec::new();
-        for (p, &bit) in e.iter().enumerate() {
-            if bit == 1 {
-                occupied.extend(geometry.cells_of_position(p).iter().map(|c| c.index()));
+    impl Game<'_> {
+        fn clone_for_test(&self) -> Self {
+            Game {
+                params: self.params,
+                local_role: self.local_role,
+                state: self.state,
+                ctx: self.ctx,
+                own_ship_cells: self.own_ship_cells.clone(),
+                own_board: self.own_board.clone(),
+                own_secrets: None,
+                answer_rng: SeededRng(self.answer_rng.0.clone()),
+                peer: self.peer.clone(),
+                peer_board: self.peer_board.clone(),
+                verified_hits: self.verified_hits,
+                hits_conceded: self.hits_conceded,
             }
         }
-        assert_eq!(occupied.len(), T);
-
-        for (n, &cell) in occupied.iter().enumerate() {
-            assert_eq!(game.state(), State::AwaitingShot { shooter: Role::A });
-            game.receive_shot(cell).unwrap();
-            let answer = game.answer_shot().unwrap();
-            assert!(answer.is_hit());
-            assert_eq!(game.hits_conceded(), n as u8 + 1);
-            if n + 1 < T {
-                // Skip the defender's own turn with a miss (identity C_i).
-                assert_eq!(game.state(), State::AwaitingShot { shooter: Role::B });
-                game.fire_shot(CellIndex::from_index(n as u8).unwrap())
-                    .unwrap();
-                game.accept_answer(&ShotAnswer::Miss { rho: Scalar::ZERO })
-                    .unwrap();
-            }
-        }
-        assert_eq!(game.state(), State::Finished { winner: Role::A });
-        assert_eq!(game.verified_hits(), 0);
-        assert_eq!(game.answer_shot(), Err(GameError::WrongState));
-        assert_eq!(game.receive_shot(99), Err(GameError::WrongState));
     }
 }

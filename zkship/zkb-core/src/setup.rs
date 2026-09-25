@@ -38,7 +38,6 @@ use crate::bp::{read_point, read_scalar, BpError, PedersenBases};
 use crate::fleet::{self, Fleet, PlacementError, SHIP_BITS};
 use crate::params::{CellIndex, Parameters, Rules, FLEET_LENGTHS, K, N};
 use crate::sigma::square::{self, SquareFirstMessage, SquareProver, SquareResponse};
-use curve25519_dalek::constants::RISTRETTO_BASEPOINT_TABLE;
 use curve25519_dalek::ristretto::RistrettoPoint;
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::{Identity, VartimeMultiscalarMul};
@@ -142,6 +141,18 @@ impl VerifiedSetup {
 
     pub fn cell_commitments(&self) -> &[RistrettoPoint; N] {
         &self.cell_commitments
+    }
+}
+
+#[cfg(test)]
+impl VerifiedSetup {
+    /// Skips proof verification; test-only.
+    pub(crate) fn from_ship_cells_for_test(ship_cells: Vec<RistrettoPoint>) -> VerifiedSetup {
+        let cell_commitments = cell_commitments(&ship_cells);
+        VerifiedSetup {
+            ship_cells,
+            cell_commitments,
+        }
     }
 }
 
@@ -498,7 +509,7 @@ fn prove_witness<R: RngCore + CryptoRng>(
     // The value goes through the fixed-base table rather than a select so the
     // cheating test prover can commit to non-bits.
     let orientation: [RistrettoPoint; K] = std::array::from_fn(|j| {
-        params.h_table() * &r_o[j] + basepoint_mul(g, &Scalar::from(w.orientation[j]))
+        params.h_table() * &r_o[j] + params.g_table() * &Scalar::from(w.orientation[j])
     });
 
     // Moments over the integers: a = sum coord * s, and the blinders of
@@ -519,7 +530,7 @@ fn prove_witness<R: RngCore + CryptoRng>(
     let squares: [[RistrettoPoint; 2]; K] = std::array::from_fn(|j| {
         std::array::from_fn(|axis| {
             let a = Zeroizing::new(Scalar::from(first_moment[j][axis]));
-            basepoint_mul(g, &(*a * *a)) + params.h_table() * &r_q[j][axis]
+            params.g_table() * &(*a * *a) + params.h_table() * &r_q[j][axis]
         })
     });
 
@@ -718,13 +729,6 @@ fn range_prove<R: RngCore + CryptoRng>(
     result.map_err(|_| SetupError::VerificationFailed)
 }
 
-/// `s G` for the value base, constant-time. `G` is the Ristretto basepoint
-/// in every profile.
-fn basepoint_mul(g: &RistrettoPoint, s: &Scalar) -> RistrettoPoint {
-    debug_assert_eq!(*g, curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT);
-    RISTRETTO_BASEPOINT_TABLE * s
-}
-
 /// Verifier. Variable-time arithmetic is fine here: all inputs are public.
 pub fn verify(
     params: &Parameters,
@@ -897,6 +901,38 @@ mod tests {
             let b = Scalar::from(u64::from(occupied[i]));
             assert_eq!(cells[i], b * params.g() + beta * params.h());
         }
+    }
+
+    #[test]
+    fn deterministic_vector_is_pinned() {
+        use sha2::{Digest, Sha512_256};
+        let fleet = Fleet::from_bytes(
+            &[0, 0, 0, 2, 0, 0, 4, 0, 0, 5, 0, 0, 7, 0, 0],
+            Rules::Standard,
+        )
+        .unwrap();
+        let mut chacha = rng(0x42);
+        let rho: Vec<Scalar> = (0..SHIP_BITS)
+            .map(|_| Scalar::random(&mut chacha))
+            .collect();
+        let msg = prove_with_rng(
+            Parameters::standard(),
+            &PROVER_ID,
+            &SID,
+            &fleet,
+            &rho,
+            rng(0x77),
+        )
+        .unwrap();
+        let digest: String = Sha512_256::digest(msg.encode())
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        // Mirrors examples/generate_setup_vector.rs.
+        assert_eq!(
+            digest,
+            "0080ba7f74eaf6c8e425032324a57540094b5722ab9650cc02609d90ffce4c85"
+        );
     }
 
     #[test]

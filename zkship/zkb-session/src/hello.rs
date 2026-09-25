@@ -319,7 +319,7 @@ mod tests {
     }
 
     fn params_id() -> [u8; 32] {
-        *Parameters::standard_v1().params_id()
+        *Parameters::standard().params_id()
     }
 
     fn make_hello(seed: u8, nonce: u8) -> (IdentityKeypair, Hello) {
@@ -420,11 +420,11 @@ mod tests {
         let hex = |b: &[u8]| b.iter().map(|b| format!("{b:02x}")).collect::<String>();
         assert_eq!(
             hex(bootstrap.sid()),
-            "a61aaeb0c4f62f94c64b0fb8b1c6b312efaf5044eefa9619455f3da52a8818fa"
+            "05a70f538f64c136278b7ad0a60f6153d4b133e1df24c93fdbd00d47b49d5a19"
         );
         assert_eq!(
             hex(bootstrap.genesis_hash()),
-            "7562eca8cff4da2242bc6a448119248561b388a7345807be6ad43f0c5eac6a54"
+            "181859589b76e3638fb28b540705bb7661a5b80cb59b66f5c38bd31a8015b1ea"
         );
 
         let (lo, hi) = if ka.peer_key() < kb.peer_key() {

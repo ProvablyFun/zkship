@@ -354,7 +354,7 @@ mod tests {
 
     #[test]
     fn answer_length_triple_consistency() {
-        // Header declares 33 but b implies 165.
+        // Header declares 33, but no hit answer is 33 bytes long.
         let payload = {
             let mut p = vec![0u8; ANSWER_MISS_LEN];
             p[0] = 1;
@@ -371,19 +371,16 @@ mod tests {
         let mut bytes = header.encode().to_vec();
         bytes.extend_from_slice(&payload);
         bytes.extend_from_slice(&[0u8; SIGNATURE_LEN]);
-        assert!(matches!(
+        assert_eq!(
             SignedFrame::decode(&bytes),
-            Err(CodecError::WrongPayloadLength {
-                message_type: MessageType::Answer,
-                ..
-            })
-        ));
+            Err(CodecError::WrongAnswerLength { tag: 1, actual: 33 })
+        );
 
         let mut bad = bytes.clone();
-        bad[HEADER_LEN] = 2;
+        bad[HEADER_LEN] = 3;
         assert_eq!(
             SignedFrame::decode(&bad),
-            Err(CodecError::InvalidAnswerFlag(2))
+            Err(CodecError::InvalidAnswerFlag(3))
         );
     }
 

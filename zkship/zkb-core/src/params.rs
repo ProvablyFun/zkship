@@ -332,6 +332,7 @@ pub struct Parameters {
     geometry: Geometry,
     rules: Rules,
     bp_gens: BpGens,
+    g_table: RistrettoBasepointTable,
     h_table: RistrettoBasepointTable,
     g: RistrettoPoint,
     h: RistrettoPoint,
@@ -392,6 +393,7 @@ impl Parameters {
             geometry: Geometry::standard(),
             rules,
             bp_gens: BpGens::derive(BP_GENERATORS_DOMAIN, rules.bp_capacity()),
+            g_table: RistrettoBasepointTable::create(&g),
             h_table: RistrettoBasepointTable::create(&h),
             g,
             h,
@@ -411,6 +413,7 @@ impl Parameters {
             geometry: Geometry::standard(),
             rules: Rules::Standard,
             bp_gens: BpGens::derive(BP_GENERATORS_DOMAIN, 1),
+            g_table: RistrettoBasepointTable::create(&g),
             h_table: RistrettoBasepointTable::create(&h),
             g,
             h,
@@ -428,12 +431,27 @@ impl Parameters {
         Parameters::new(g, h)
     }
 
+    /// As `from_test_generators`, for the abstract's construction.
+    #[cfg(test)]
+    pub(crate) fn paper_from_test_generators(
+        g: RistrettoPoint,
+        h: RistrettoPoint,
+        rules: Rules,
+    ) -> Parameters {
+        Parameters::with_rules(g, h, rules)
+    }
+
     pub fn rules(&self) -> Rules {
         self.rules
     }
 
     pub fn bp_gens(&self) -> &BpGens {
         &self.bp_gens
+    }
+
+    /// Constant-time fixed-base multiplication by `g`, for secret values.
+    pub fn g_table(&self) -> &RistrettoBasepointTable {
+        &self.g_table
     }
 
     /// Constant-time fixed-base multiplication by `h`, for secret blinders.

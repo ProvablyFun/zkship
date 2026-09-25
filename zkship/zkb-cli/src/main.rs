@@ -3,27 +3,29 @@
 //! transport if confidentiality matters.
 //!
 //! ```text
-//! zkb-cli listen  --addr 127.0.0.1:PORT [--name NAME] [--key-file PATH]
-//! zkb-cli connect --addr 127.0.0.1:PORT [--name NAME] [--key-file PATH]
+//! zkb-cli listen  --addr 127.0.0.1:PORT [--name NAME] [--key-file PATH] [--rules RULES]
+//! zkb-cli connect --addr 127.0.0.1:PORT [--name NAME] [--key-file PATH] [--rules RULES]
 //! ```
 //!
 //! The fingerprint prompt is the application peer-auth hook; it is not MITM
 //! protection unless the fingerprint is compared out of band.
+//! `RULES` is `standard` (default) or `no-touch`; both peers must agree, which the
+//! Hello exchange checks through `params_id`.
 //! `ZKB_CLI_AUTO=1` is a scripted test mode (auto-confirm, deterministic shots).
 
 #![forbid(unsafe_code)]
 
 use curve25519_dalek::scalar::Scalar;
-use rand::Rng;
 use rand_core::OsRng;
 use std::env;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::process::ExitCode;
 use zeroize::Zeroizing;
+use zkb_core::fleet::{Fleet, SHIP_BITS};
 use zkb_core::game::Role;
 use zkb_core::game::ShotOutcome;
-use zkb_core::params::{CellIndex, Parameters, K, N, P, T};
+use zkb_core::params::{CellIndex, Parameters, Rules, FLEET_LENGTHS, N, T};
 use zkb_session::codec::MAX_FRAME_SIZE;
 use zkb_session::frame::{self, SignedFrame};
 use zkb_session::hello::{self, Hello};
@@ -50,6 +52,7 @@ struct Options {
     addr: String,
     name: String,
     key_file: Option<String>,
+    rules: Rules,
     auto: bool,
 }
 
@@ -67,6 +70,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
     let mut addr = None;
     let mut name = None;
     let mut key_file = None;
+    let mut rules = Rules::Standard;
     while let Some(flag) = iter.next() {
         let Some(value) = iter.next() else {
             return Err(usage());
@@ -75,6 +79,13 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             "--addr" => addr = Some(value.clone()),
             "--name" => name = Some(value.clone()),
             "--key-file" => key_file = Some(value.clone()),
+            "--rules" => {
+                rules = match value.as_str() {
+                    "standard" => Rules::Standard,
+                    "no-touch" => Rules::NoTouch,
+                    _ => return Err(usage()),
+                }
+            }
             _ => return Err(usage()),
         }
     }
@@ -83,17 +94,20 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         addr: addr.ok_or_else(usage)?,
         name: name.unwrap_or_else(|| "player".to_string()),
         key_file,
+        rules,
         auto,
     })
 }
 
 fn usage() -> String {
-    "usage: zkb-cli <listen|connect> --addr HOST:PORT [--name NAME] [--key-file PATH]".to_string()
+    "usage: zkb-cli <listen|connect> --addr HOST:PORT [--name NAME] [--key-file PATH] \
+     [--rules standard|no-touch]"
+        .to_string()
 }
 
 fn run(args: &[String]) -> Result<(), String> {
     let options = parse_args(args)?;
-    let params = Parameters::standard_v1();
+    let params = Parameters::for_rules(options.rules);
     let keypair = load_or_create_identity(options.key_file.as_deref())?;
     println!(
         "[{}] identity fingerprint: {}",
@@ -197,9 +211,9 @@ impl<'a> Demo<'a> {
             .map_err(|e| format!("bootstrap: {e}"))?;
         let local_role = bootstrap.role_of(&self.keypair.peer_key());
 
-        let placement = random_placement(self.params);
-        self.placement = occupied_cells(self.params, &placement);
-        let blinders: Vec<Scalar> = (0..P).map(|_| Scalar::random(&mut OsRng)).collect();
+        let fleet = Fleet::random(&mut OsRng, self.params.rules());
+        self.placement = fleet.occupied().to_vec();
+        let blinders: Vec<Scalar> = (0..SHIP_BITS).map(|_| Scalar::random(&mut OsRng)).collect();
         let session = Session::new(
             self.params,
             self.keypair,
@@ -207,7 +221,7 @@ impl<'a> Demo<'a> {
             peer,
             *bootstrap.sid(),
             *bootstrap.genesis_hash(),
-            placement,
+            fleet,
             blinders,
         )
         .map_err(|e| format!("session: {e}"))?;
@@ -373,14 +387,20 @@ impl<'a> Demo<'a> {
                 self.tracking[cell.index() as usize] = Some(false);
                 println!("[{}] miss", self.name);
             }
-            ShotOutcome::Hit { .. } | ShotOutcome::Win => {
+            ShotOutcome::Hit => {
                 self.tracking[cell.index() as usize] = Some(true);
-                let counts = self
-                    .session()
-                    .game()
-                    .map(|g| g.accepted_sunk_counts())
-                    .expect("game exists once play has started");
-                println!("[{}] hit! sunk so far (5,4,3,2): {:?}", self.name, counts);
+                println!("[{}] hit!", self.name);
+            }
+            ShotOutcome::Sunk { ship } => {
+                self.tracking[cell.index() as usize] = Some(true);
+                println!(
+                    "[{}] hit! ship {ship} (length {}) sunk",
+                    self.name, FLEET_LENGTHS[ship as usize]
+                );
+            }
+            ShotOutcome::Win => {
+                self.tracking[cell.index() as usize] = Some(true);
+                println!("[{}] hit! last ship sunk", self.name);
             }
         }
     }
@@ -528,34 +548,6 @@ fn load_or_create_identity(key_file: Option<&str>) -> Result<IdentityKeypair, St
     }
 }
 
-/// One uniform position per block, rejection-sampled until disjoint.
-fn random_placement(params: &Parameters) -> Vec<u8> {
-    let geometry = params.geometry();
-    let mut rng = OsRng;
-    loop {
-        let mut e = vec![0u8; P];
-        for k in 0..K {
-            e[rng.gen_range(geometry.block_range(k))] = 1;
-        }
-        if geometry.is_legal_placement(&e) {
-            return e;
-        }
-    }
-}
-
-fn occupied_cells(params: &Parameters, placement: &[u8]) -> Vec<bool> {
-    let geometry = params.geometry();
-    let mut occupied = vec![false; N];
-    for (p, &bit) in placement.iter().enumerate() {
-        if bit == 1 {
-            for cell in geometry.cells_of_position(p) {
-                occupied[cell.index() as usize] = true;
-            }
-        }
-    }
-    occupied
-}
-
 /// "B5": row letter A-J (A = 0), column digit 0-9.
 fn parse_cell(input: &str) -> Option<CellIndex> {
     let mut chars = input.trim().chars();
@@ -606,6 +598,7 @@ fn prompt_line(prompt: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::Rng;
 
     struct KeyDir(std::path::PathBuf);
     impl KeyDir {
@@ -684,19 +677,20 @@ mod tests {
         role: Role,
         peer: &IdentityKeypair,
     ) -> Session<'a> {
-        let mut e = vec![0; P];
-        for p in [0, 134, 292, 460, 643] {
-            e[p] = 1;
-        }
+        let fleet = Fleet::from_bytes(
+            &[0, 0, 0, 2, 0, 0, 4, 0, 0, 5, 0, 0, 7, 0, 0],
+            Rules::Standard,
+        )
+        .unwrap();
         Session::new(
-            Parameters::standard_v1(),
+            Parameters::standard(),
             key,
             role,
             AuthenticatedPeer::from_policy_decision(peer.peer_key()),
             [3; 32],
             [4; 32],
-            e,
-            vec![Scalar::ONE; P],
+            fleet,
+            vec![Scalar::ONE; SHIP_BITS],
         )
         .unwrap()
     }
@@ -707,9 +701,10 @@ mod tests {
             addr: String::new(),
             name: "test".into(),
             key_file: None,
+            rules: Rules::Standard,
             auto: true,
         };
-        let mut demo = Demo::new(Parameters::standard_v1(), key, &opts);
+        let mut demo = Demo::new(Parameters::standard(), key, &opts);
         demo.session = Some(session);
         demo
     }

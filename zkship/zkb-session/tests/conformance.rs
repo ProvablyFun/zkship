@@ -4,8 +4,10 @@ use curve25519_dalek::scalar::Scalar;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use std::collections::BTreeMap;
+use zkb_core::fleet::{Fleet, SHIP_BITS};
 use zkb_core::game::Role;
-use zkb_core::params::{CellIndex, Parameters, N, P, T};
+use zkb_core::params::{CellIndex, Parameters, Rules, N, T};
+use zkb_core::setup::{self, SetupMessage};
 use zkb_session::hello::{self, Hello};
 use zkb_session::identity::{ExpectedKey, IdentityKeypair, PeerAuthPolicy};
 use zkb_session::state::{AcceptOutcome, Session};
@@ -35,12 +37,9 @@ fn parse_vector(text: &str) -> BTreeMap<String, String> {
         .collect()
 }
 
-fn placement(positions: &str) -> Vec<u8> {
-    let mut e = vec![0u8; P];
-    for p in positions.split(',') {
-        e[p.parse::<usize>().expect("position index")] = 1;
-    }
-    e
+fn fleet(field: &str) -> Fleet {
+    let bytes: [u8; 15] = unhex(field).try_into().expect("15 fleet bytes");
+    Fleet::from_bytes(&bytes, Rules::Standard).expect("legal fleet")
 }
 
 fn rng_seed(field: &str) -> [u8; 32] {
@@ -53,19 +52,19 @@ fn rng_seed(field: &str) -> [u8; 32] {
 
 fn blinders(field: &str) -> Vec<Scalar> {
     let mut rng = ChaCha20Rng::from_seed(rng_seed(field));
-    (0..P).map(|_| Scalar::random(&mut rng)).collect()
+    (0..SHIP_BITS).map(|_| Scalar::random(&mut rng)).collect()
 }
 
 #[test]
 fn game_transcript_vector_replays_byte_for_byte() {
-    let params = Parameters::standard_v1();
+    let params = Parameters::standard();
     let path =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../vectors/game_transcript_v1.txt");
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("read {}: {e}; regenerate with `cargo run -p zkb-session --example generate_game_transcript`", path.display()));
     let v = parse_vector(&text);
 
-    assert_eq!(v["profile"], "zkbattleship/reference/v1");
+    assert_eq!(v["profile"], "zkbattleship/paper/v1");
     assert_eq!(v["params_id"], hex(params.params_id()));
 
     let ka = IdentityKeypair::from_seed(&unhex32(&v["key_seed_role_a"]));
@@ -104,7 +103,7 @@ fn game_transcript_vector_replays_byte_for_byte() {
         auth(&kb),
         *bootstrap.sid(),
         *bootstrap.genesis_hash(),
-        placement(&v["placement_role_a"]),
+        fleet(&v["fleet_role_a"]),
         blinders(&v["blinders_seed_role_a"]),
     )
     .unwrap();
@@ -115,7 +114,7 @@ fn game_transcript_vector_replays_byte_for_byte() {
         auth(&ka),
         *bootstrap.sid(),
         *bootstrap.genesis_hash(),
-        placement(&v["placement_role_b"]),
+        fleet(&v["fleet_role_b"]),
         blinders(&v["blinders_seed_role_b"]),
     )
     .unwrap();
@@ -235,41 +234,28 @@ fn game_transcript_vector_replays_byte_for_byte() {
     assert_eq!(loser.game().unwrap().hits_conceded(), T as u8);
 }
 
-/// Decode-level only; full verification of this proof runs in zkb-core's wf tests.
+/// Decodes, re-encodes and verifies the pinned setup message.
 #[test]
-fn commitment_proof_vector_decodes() {
-    let params = Parameters::standard_v1();
+fn setup_message_vector_verifies() {
+    let params = Parameters::standard();
     let path =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../vectors/commitment_proof_v1.txt");
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../vectors/setup_message_v1.txt");
     let text =
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     let v = parse_vector(&text);
 
-    assert_eq!(v["profile"], "zkbattleship/reference/v1");
+    assert_eq!(v["profile"], "zkbattleship/paper/v1");
     assert_eq!(v["params_id"], hex(params.params_id()));
 
-    let entry = unhex(&v["entry_commitments_hex"]);
-    let proof = unhex(&v["proof_hex"]);
-    assert_eq!(
-        entry.len(),
-        v["entry_commitments_len"].parse::<usize>().unwrap()
-    );
-    assert_eq!(proof.len(), v["proof_len"].parse::<usize>().unwrap());
-
-    let sha512_256 = |parts: &[&[u8]]| {
+    let bytes = unhex(&v["setup_hex"]);
+    assert_eq!(bytes.len(), v["setup_len"].parse::<usize>().unwrap());
+    let sha512_256 = |bytes: &[u8]| {
         use sha2::{Digest, Sha512_256};
-        let mut hasher = Sha512_256::new();
-        for part in parts {
-            hasher.update(part);
-        }
-        hex(&hasher.finalize())
+        hex(&Sha512_256::digest(bytes))
     };
-    assert_eq!(sha512_256(&[&entry]), v["entry_commitments_sha512_256"]);
-    assert_eq!(sha512_256(&[&proof]), v["proof_sha512_256"]);
-    assert_eq!(sha512_256(&[&entry, &proof]), v["combined_sha512_256"]);
+    assert_eq!(sha512_256(&bytes), v["setup_sha512_256"]);
 
-    let board = zkb_core::wf::UnverifiedBoardCommitment::from_bytes(&entry).unwrap();
-    let decoded = zkb_core::wf::WfProof::decode(&proof).unwrap();
-    assert_eq!(board.to_bytes(), entry);
-    assert_eq!(decoded.encode(), proof);
+    let msg = SetupMessage::decode(&bytes, Rules::Standard).unwrap();
+    assert_eq!(msg.encode(), bytes);
+    setup::verify(params, &unhex32(&v["prover_id"]), &unhex32(&v["sid"]), &msg).unwrap();
 }

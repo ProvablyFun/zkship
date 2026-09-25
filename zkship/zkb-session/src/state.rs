@@ -11,7 +11,7 @@
 //! transcript cannot attribute silence (paper Construction 7.1, S7, and Section 10);
 //! D [`SessionError::InternalInvariant`] = implementation incident.
 
-use crate::codec::{CodecError, MessageType, COMMIT_ENTRY_LEN};
+use crate::codec::{CodecError, MessageType};
 use crate::coin;
 use crate::frame::{self, AuthenticatedFrame, ChainError, ChainExpectation, SignedFrame};
 use crate::identity::{AuthenticatedPeer, IdentityKeypair};
@@ -20,10 +20,11 @@ use curve25519_dalek::scalar::Scalar;
 use rand_core::{CryptoRng, OsRng, RngCore};
 use std::fmt;
 use zeroize::Zeroizing;
-use zkb_core::game::{Game, GameError, Role, ShotOutcome, State as GameState};
-use zkb_core::openings::{AnswerDecodeError, AnswerRejection, ShotAnswer};
-use zkb_core::params::{CellIndex, Parameters, P};
-use zkb_core::wf::{self, UnverifiedBoardCommitment, VerifiedBoardCommitment, WfError, WfProof};
+use zkb_core::answers::{AnswerDecodeError, AnswerRejection};
+use zkb_core::fleet::{Fleet, SHIP_BITS};
+use zkb_core::game::{Game, GameContext, GameError, Role, ShotOutcome, State as GameState};
+use zkb_core::params::{CellIndex, Parameters};
+use zkb_core::setup::{self, SetupError, SetupMessage, VerifiedSetup};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClassBReason {
@@ -55,7 +56,7 @@ pub enum Violation {
     SenderRoleMismatch { claimed: u8 },
     UnexpectedMessage { message_type: MessageType },
     OutOfTurnResign,
-    InvalidCommit(WfError),
+    InvalidCommit(SetupError),
     InvalidAnswerEncoding(AnswerDecodeError),
     InvalidAnswer(AnswerRejection),
     InvalidShot(GameError),
@@ -148,9 +149,11 @@ struct ChainHead {
 // Clone only for the fuzz harness's verified-fixture snapshots.
 #[cfg_attr(fuzzing, derive(Clone))]
 struct OwnBoard {
-    entry_commitments: Option<Vec<RistrettoPoint>>,
-    e: Option<Zeroizing<Vec<u8>>>,
-    s: Option<Zeroizing<Vec<Scalar>>>,
+    ship_cells: Option<Vec<RistrettoPoint>>,
+    fleet: Option<Fleet>,
+    rho: Option<Zeroizing<Vec<Scalar>>>,
+    /// Keys the not-sunk proof nonces; drawn when the setup is sent.
+    answer_seed: Option<Zeroizing<[u8; 32]>>,
 }
 
 impl OwnBoard {
@@ -164,7 +167,7 @@ struct CommitPhase {
     a_done: bool,
     b_done: bool,
     own: OwnBoard,
-    peer_verified: Option<VerifiedBoardCommitment>,
+    peer_verified: Option<VerifiedSetup>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -181,7 +184,7 @@ struct CoinPhase<'a> {
     r_a: Option<[u8; 32]>,
     r_b: Option<[u8; 32]>,
     own: OwnBoard,
-    peer_verified: Option<VerifiedBoardCommitment>,
+    peer_verified: Option<VerifiedSetup>,
     game: Option<Game<'a>>,
 }
 
@@ -256,31 +259,51 @@ fn attributable(frame: AuthenticatedFrame, violation: Violation) -> SessionError
     }))
 }
 
+fn game_context(
+    keypair: &IdentityKeypair,
+    peer: &AuthenticatedPeer,
+    sid: &[u8; 32],
+) -> GameContext {
+    GameContext {
+        own_id: *keypair.peer_key().as_bytes(),
+        peer_id: *peer.key().as_bytes(),
+        sid: *sid,
+    }
+}
+
 fn build_game<'a>(
     params: &'a Parameters,
     local_role: Role,
     first_mover: Role,
+    ctx: GameContext,
     own: &mut OwnBoard,
-    peer_verified: &mut Option<VerifiedBoardCommitment>,
+    peer_verified: &mut Option<VerifiedSetup>,
 ) -> Result<Game<'a>, SessionError> {
-    let mut e = own.e.take().expect("witness present until game build");
-    let mut s = own.s.take().expect("witness present until game build");
-    let entry = own.entry_commitments.take().expect("local commit produced");
+    let fleet = own.fleet.take().expect("witness present until game build");
+    let mut rho = own.rho.take().expect("witness present until game build");
+    let seed = own
+        .answer_seed
+        .take()
+        .expect("seed drawn with the local commit");
+    let ship_cells = own.ship_cells.take().expect("local commit produced");
     let peer = peer_verified.take().expect("peer commit verified");
     Game::new(
         params,
         local_role,
         first_mover,
-        entry,
-        std::mem::take(&mut *e),
-        std::mem::take(&mut *s),
+        ctx,
+        ship_cells,
+        &fleet,
+        std::mem::take(&mut *rho),
+        &seed,
         peer,
     )
     .map_err(|_| SessionError::InternalInvariant("validated board could not initialize game"))
 }
 
 impl<'a> Session<'a> {
-    /// `e`, `s`: secret placement and fresh blinders, moved in and zeroized on drop.
+    /// `fleet`, `rho`: secret fleet and fresh ship-cell blinders, moved in and zeroized on
+    /// drop.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         params: &'a Parameters,
@@ -289,20 +312,17 @@ impl<'a> Session<'a> {
         peer: AuthenticatedPeer,
         sid: [u8; 32],
         genesis_hash: [u8; 32],
-        e: Vec<u8>,
-        s: Vec<Scalar>,
+        fleet: Fleet,
+        rho: Vec<Scalar>,
     ) -> Result<Session<'a>, SessionError> {
-        let e = Zeroizing::new(e);
-        let s = Zeroizing::new(s);
-        if s.len() != P {
+        let rho = Zeroizing::new(rho);
+        if rho.len() != SHIP_BITS {
             return Err(SessionError::LocalGame(GameError::WrongWitnessLength {
-                expected: P,
-                actual: s.len(),
+                expected: SHIP_BITS,
+                actual: rho.len(),
             }));
         }
-        params
-            .geometry()
-            .validate_placement(&e)
+        Fleet::new(*fleet.ships(), params.rules())
             .map_err(GameError::IllegalPlacement)
             .map_err(SessionError::LocalGame)?;
         Ok(Session {
@@ -319,9 +339,10 @@ impl<'a> Session<'a> {
                 a_done: false,
                 b_done: false,
                 own: OwnBoard {
-                    entry_commitments: None,
-                    e: Some(e),
-                    s: Some(s),
+                    ship_cells: None,
+                    fleet: Some(fleet),
+                    rho: Some(rho),
+                    answer_seed: None,
                 },
                 peer_verified: None,
             })),
@@ -476,27 +497,27 @@ impl<'a> Session<'a> {
             expected == self.local_role
         });
         if commit_turn {
-            let (board, proof) = {
+            let msg = {
                 let Phase::Commit(cp) = &self.phase else {
                     unreachable!()
                 };
-                let e = cp.own.e.as_ref().expect("witness present");
-                let s = cp.own.s.as_ref().expect("witness present");
-                wf::prove_with_rng(
+                let fleet = cp.own.fleet.as_ref().expect("witness present");
+                let rho = cp.own.rho.as_ref().expect("witness present");
+                setup::prove_with_rng(
                     self.params,
                     self.keypair.peer_key().as_bytes(),
                     &self.sid,
-                    e,
-                    s.as_slice(),
+                    fleet,
+                    rho.as_slice(),
                     proof_finalize_rng,
                 )
                 .map_err(|_| {
                     SessionError::InternalInvariant("local prover refused its validated witness")
                 })?
             };
-            let mut payload = board.to_bytes();
-            payload.extend_from_slice(&proof.encode());
-            let entry = board.entry_commitments().to_vec();
+            let payload = msg.encode();
+            let mut answer_seed = Zeroizing::new([0u8; 32]);
+            rng.fill_bytes(&mut *answer_seed);
             let frame = craft_next(
                 self.keypair,
                 &self.sid,
@@ -508,7 +529,8 @@ impl<'a> Session<'a> {
             );
             let mut to_coin = false;
             if let Phase::Commit(cp) = &mut self.phase {
-                cp.own.entry_commitments = Some(entry);
+                cp.own.ship_cells = Some(msg.ship_cells);
+                cp.own.answer_seed = Some(answer_seed);
                 match self.local_role {
                     Role::A => cp.a_done = true,
                     Role::B => cp.b_done = true,
@@ -665,17 +687,9 @@ impl<'a> Session<'a> {
                     ));
                 }
                 let payload = frame.frame().payload();
-                let (entry_bytes, proof_bytes) = payload.split_at(COMMIT_ENTRY_LEN);
-                let verified = (|| -> Result<VerifiedBoardCommitment, WfError> {
-                    let board = UnverifiedBoardCommitment::from_bytes(entry_bytes)?;
-                    let proof = WfProof::decode(proof_bytes)?;
-                    wf::verify(
-                        self.params,
-                        self.peer.key().as_bytes(),
-                        &self.sid,
-                        &board,
-                        &proof,
-                    )
+                let verified = (|| -> Result<VerifiedSetup, SetupError> {
+                    let msg = SetupMessage::decode(payload, self.params.rules())?;
+                    setup::verify(self.params, self.peer.key().as_bytes(), &self.sid, &msg)
                 })();
                 let verified = match verified {
                     Ok(v) => v,
@@ -720,6 +734,7 @@ impl<'a> Session<'a> {
                             self.params,
                             self.local_role,
                             first_mover,
+                            game_context(self.keypair, &self.peer, &self.sid),
                             &mut cp.own,
                             &mut cp.peer_verified,
                         )?;
@@ -748,6 +763,7 @@ impl<'a> Session<'a> {
                         self.params,
                         self.local_role,
                         first_mover,
+                        game_context(self.keypair, &self.peer, &self.sid),
                         &mut cp.own,
                         &mut cp.peer_verified,
                     )?;
@@ -811,7 +827,7 @@ impl<'a> Session<'a> {
                             Violation::UnexpectedMessage { message_type },
                         ));
                     }
-                    let decoded = match ShotAnswer::decode(frame.frame().payload()) {
+                    let decoded = match game.decode_answer(frame.frame().payload()) {
                         Ok(a) => a,
                         Err(e) => {
                             return Err(attributable(frame, Violation::InvalidAnswerEncoding(e)))
@@ -887,33 +903,41 @@ mod tests {
             .unwrap()
     }
 
-    fn placement_a() -> Vec<u8> {
-        let mut e = vec![0u8; P];
-        e[0] = 1;
-        e[134] = 1;
-        e[292] = 1;
-        e[460] = 1;
-        e[643] = 1;
-        e
+    fn ship(row: u8, col: u8, vertical: bool) -> zkb_core::fleet::ShipPlacement {
+        zkb_core::fleet::ShipPlacement { row, col, vertical }
     }
 
-    fn placement_b() -> Vec<u8> {
-        let mut e = vec![0u8; P];
-        e[5] = 1;
-        e[127] = 1;
-        e[272] = 1;
-        e[444] = 1;
-        e[625] = 1;
-        e
+    /// Cells 0-4, 20-23, 40-42, 50-52, 70-71.
+    fn placement_a() -> Fleet {
+        let ships = [
+            ship(0, 0, false),
+            ship(2, 0, false),
+            ship(4, 0, false),
+            ship(5, 0, false),
+            ship(7, 0, false),
+        ];
+        Fleet::new(ships, zkb_core::params::Rules::Standard).unwrap()
+    }
+
+    /// Cells 5-9, 10-13, 14-16, 30-32, 50-51.
+    fn placement_b() -> Fleet {
+        let ships = [
+            ship(0, 5, false),
+            ship(1, 0, false),
+            ship(1, 4, false),
+            ship(3, 0, false),
+            ship(5, 0, false),
+        ];
+        Fleet::new(ships, zkb_core::params::Rules::Standard).unwrap()
     }
 
     fn blinders(seed: u8) -> Vec<Scalar> {
         let mut rng = rng(seed);
-        (0..P).map(|_| Scalar::random(&mut rng)).collect()
+        (0..SHIP_BITS).map(|_| Scalar::random(&mut rng)).collect()
     }
 
     fn session<'b>(local: &'b IdentityKeypair, role: Role, peer: &IdentityKeypair) -> Session<'b> {
-        let params = Parameters::standard_v1();
+        let params = Parameters::standard();
         Session::new(
             params,
             local,
@@ -929,20 +953,19 @@ mod tests {
 
     #[test]
     fn new_rejects_bad_local_witness() {
-        let params = Parameters::standard_v1();
+        let params = Parameters::standard();
         let ka = keypair(1);
         let kb = keypair(2);
-        let mut e = placement_a();
-        e[581] = 1; // two selected positions in block 4
+        // Rows 4 and 5 touch: legal in the standard game only.
         assert!(matches!(
             Session::new(
-                params,
+                Parameters::no_touch(),
                 &ka,
                 Role::A,
                 auth(&kb),
                 SID,
                 GENESIS,
-                e,
+                placement_a(),
                 blinders(1)
             ),
             Err(SessionError::LocalGame(GameError::IllegalPlacement(_)))
@@ -956,7 +979,7 @@ mod tests {
                 SID,
                 GENESIS,
                 placement_a(),
-                blinders(1)[..P - 1].to_vec()
+                blinders(1)[..SHIP_BITS - 1].to_vec()
             ),
             Err(SessionError::LocalGame(
                 GameError::WrongWitnessLength { .. }
@@ -997,7 +1020,7 @@ mod tests {
         let Phase::Commit(cp) = &mut sa.phase else {
             unreachable!()
         };
-        cp.own.e.as_mut().unwrap()[0] = 0;
+        cp.own.rho.as_mut().unwrap().pop();
         assert!(matches!(
             sa.produce(&mut rng(1)),
             Err(SessionError::InternalInvariant(_))
@@ -1047,7 +1070,7 @@ mod tests {
                 unreachable!()
             };
             // Corrupt the validated witness: the game handoff must fail terminally.
-            cp.own.e.as_mut().unwrap()[0] = 0;
+            cp.own.rho.as_mut().unwrap().pop();
             let previous_head = *failed.head_hash();
             let previous_sequence = failed.head_sequence();
             assert!(matches!(
@@ -1261,7 +1284,7 @@ mod tests {
     /// The single slow test: real proofs.
     #[test]
     fn full_session_between_two_players() {
-        let params = Parameters::standard_v1();
+        let params = Parameters::standard();
         let params_id = *params.params_id();
         let ka = keypair(0x11);
         let kb = keypair(0x22);

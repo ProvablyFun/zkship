@@ -1,23 +1,23 @@
-# Interoperability vectors (standard v1)
+# Interoperability vectors (standard rules)
 
 Format: `key = value` per line, `#` comments, lowercase hex, decimal integers;
-multi-byte integers inside protocol encodings are little-endian.
+multi-byte integers inside protocol encodings are little-endian. Fleets are
+15 bytes, `row || col || vertical` per ship in fleet order (5, 4, 3, 3, 2),
+the anchor being the top or left cell.
 
-## commitment_proof_v1.txt
+## setup_message_v1.txt
 
-- `profile`, `params_id`; `prover_id`, `sid` (proof context).
-- `placement_positions`: five global position indices, block order (5,4,3,3,2).
-- `blinders_rng`, `proof_finalize_rng`: seeded RNGs for `s` and Fiat-Shamir finalization.
-- `entry_commitments_len` (24,320), `proof_len` (82,752); SHA-512/256 of `E`, proof, and `E || proof`.
-- `entry_commitments_hex`, `proof_hex`: canonical bytes.
+- `profile`, `params_id`; `prover_id`, `sid` (proof context); `fleet`.
+- `blinders_rng`, `proof_finalize_rng`: seeded RNGs for the 500 ship-cell blinders and the prover's hedged nonces.
+- `setup_len` (19,488), `setup_sha512_256`, `setup_hex`: the setup message.
 
-Regenerate: `cargo run -p zkb-core --example generate_commitment_vector` (checks the digest pinned in `wf.rs`).
-Conformance: `zkb-session/tests/conformance.rs::commitment_proof_vector_decodes`.
+Regenerate: `cargo run -p zkb-core --example generate_setup_vector` (checks the digest pinned in `setup.rs`).
+Conformance: `zkb-session/tests/conformance.rs::setup_message_vector_verifies`.
 
 ## game_transcript_v1.txt
 
-- `key_seed_role_a/b`, `hello_role_a/b` (162 bytes each); `placement_role_a/b`.
-- `blinders_seed_*`, `proof_finalize_rng_*`, `coin_rng_*`: seeded RNGs.
+- `key_seed_role_a/b`, `hello_role_a/b` (162 bytes each); `fleet_role_a/b`.
+- `blinders_seed_*`, `proof_finalize_rng_*`, `coin_rng_*`: seeded RNGs. The coin RNG also supplies each player's not-sunk proof seed, drawn right after its Commit.
 - `sid`, `genesis_hash`, `first_mover`, `winner`, `winner_hits`, `winner_sunk_total`, `loser_hits`.
 - `frame_count`, `frame[0000]`..: every signed frame in chain order (sequence 1..).
 
