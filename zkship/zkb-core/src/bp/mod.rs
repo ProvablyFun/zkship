@@ -9,7 +9,7 @@
 //! bit proof is `n = 1, m = 605` (1,024 slots, 24 group elements).
 
 pub mod ipa;
-
+pub mod range;
 
 use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
 use curve25519_dalek::scalar::Scalar;
