@@ -1,0 +1,4 @@
+game,deploy_gas,play_gas,total_gas_incl_deploy,n_tx_play,n_board_proofs,n_shot_proofs,n_hit_reports,n_miss_reports,winner,hardfork
+0,3790940,11988370,15779310,36,2,33,17,16,alice,arrowGlacier
+1,3790940,11988250,15779190,36,2,33,17,16,alice,arrowGlacier
+2,3790940,11988154,15779094,36,2,33,17,16,alice,arrowGlacier

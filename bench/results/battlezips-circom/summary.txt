@@ -1,0 +1,33 @@
+board      snarkjs-lib  wtns_calculate  n= 20 median=   17.845 ms p95=   18.646 ms
+board      snarkjs-lib  groth16_prove   n= 20 median=  450.013 ms p95=  533.211 ms
+board      snarkjs-lib  fullprove       n= 20 median=  484.446 ms p95=  545.843 ms
+board      snarkjs-lib  groth16_verify  n=100 median=  220.529 ms p95=  234.117 ms
+board      snarkjs-cli  groth16_prove   n=  5 median=  832.887 ms p95=  872.438 ms  peakRSS median=796 MiB
+board      snarkjs-cli  fullprove       n=  3 median=  818.959 ms p95=  861.605 ms  peakRSS median=797 MiB
+board      rapidsnark   groth16_prove   n= 20 median=  122.689 ms p95=  143.894 ms  peakRSS median=14 MiB
+shot_hit   snarkjs-lib  wtns_calculate  n= 20 median=    11.61 ms p95=   12.186 ms
+shot_hit   snarkjs-lib  groth16_prove   n= 20 median=  460.683 ms p95=  503.832 ms
+shot_hit   snarkjs-lib  fullprove       n= 20 median=  479.911 ms p95=  513.752 ms
+shot_hit   snarkjs-lib  groth16_verify  n=100 median=  218.632 ms p95=  229.163 ms
+shot_hit   snarkjs-cli  groth16_prove   n=  5 median=  801.321 ms p95=  871.757 ms  peakRSS median=752 MiB
+shot_hit   snarkjs-cli  fullprove       n=  3 median=  809.262 ms p95=  810.062 ms  peakRSS median=749 MiB
+shot_hit   rapidsnark   groth16_prove   n= 20 median=   98.901 ms p95=  122.855 ms  peakRSS median=12 MiB
+shot_miss  snarkjs-lib  wtns_calculate  n= 20 median=   11.772 ms p95=   14.947 ms
+shot_miss  snarkjs-lib  groth16_prove   n= 20 median=  468.304 ms p95=  483.389 ms
+shot_miss  snarkjs-lib  fullprove       n= 20 median=  490.047 ms p95=   513.83 ms
+shot_miss  snarkjs-lib  groth16_verify  n=100 median=  218.717 ms p95=  233.697 ms
+shot_miss  snarkjs-cli  groth16_prove   n=  5 median=  872.015 ms p95=  886.518 ms  peakRSS median=749 MiB
+shot_miss  snarkjs-cli  fullprove       n=  3 median=  842.337 ms p95=  896.513 ms  peakRSS median=747 MiB
+shot_miss  rapidsnark   groth16_prove   n= 20 median=   98.891 ms p95=   130.58 ms  peakRSS median=12 MiB
+gas deploy_ShotVerifier              n=  3 median=935835 (calldata 4116 B)
+gas deploy_BoardVerifier             n=  3 median=861867 (calldata 3774 B)
+gas deploy_Forwarder                 n=  3 median=658010 (calldata 3137 B)
+gas deploy_BattleshipGame            n=  3 median=1335228 (calldata 5968 B)
+gas newGame                          n=  3 median=327616 (calldata 292 B)
+gas bare_BoardVerifier.verifyProof   n=  3 median=228254 (calldata 292 B)
+gas joinGame                         n=  3 median=309662 (calldata 324 B)
+gas firstTurn                        n=  3 median=78049 (calldata 100 B)
+gas bare_ShotVerifier.verifyProof    n=  3 median=252071 (calldata 388 B)
+gas turn_hit                         n= 51 median=356157 (calldata 388 B)
+gas turn_miss                        n= 48 median=332863 (calldata 388 B)
+gas full game: play=11988250 deploy=3790940 total=15779190

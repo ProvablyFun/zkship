@@ -1,0 +1,18 @@
+# ZK Battleship benchmarks
+# host: 28 logical cores
+
+proof,receipt_kind,history_len,prove_s,verify_ms,journal_B,seal_B,wire_json_B,user_cycles,total_cycles
+commit,composite,0,3.60,10.2,128,220904,567329,14033,65536
+shot,composite,0,3.85,10.4,152,220904,567674,20062,65536
+shot,composite,25,7.12,11.9,352,243944,628338,40049,131072
+shot,composite,50,7.77,10.6,552,243944,629211,59803,131072
+shot,composite,99,6.90,11.3,944,243944,630682,98593,131072
+commit,succinct,0,9.02,9.5,128,222668,583215,14033,65536
+shot,succinct,0,8.91,9.7,152,222668,583399,20062,65536
+shot,succinct,25,12.08,11.0,352,222668,584209,40049,131072
+shot,succinct,50,12.25,10.7,552,222668,585166,59803,131072
+shot,succinct,99,12.79,10.8,944,222668,586336,98593,131072
+
+# executor user-cycle counts for prove_shot across 20 random boards
+# (fixed shot + history; identical counts = witness-independent trace)
+cycles: min=44055 max=44079 spread=24

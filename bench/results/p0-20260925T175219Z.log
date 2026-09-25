@@ -1,0 +1,90 @@
+   Compiling zkb-core v0.1.0 (/home/user/src/provablyfun/zkship/zkship/zkb-core)
+   Compiling zkb-session v0.1.0 (/home/user/src/provablyfun/zkship/zkship/zkb-session)
+   Compiling zkb-bench v0.1.0 (/home/user/src/provablyfun/zkship/zkship/zkb-bench)
+    Finished `release` profile [optimized] target(s) in 1.79s
+warning: load average 1.39; results will be noisy
+== cold start (20 fresh processes)
+== peak RSS
+== sizes
+setup_standard           crypto  19488  payload  19488  frame  19630
+setup_no-touch           crypto  20544  payload  20544  frame  20686
+coin_message             crypto     32  payload     32  frame    174
+shot                     crypto      1  payload      1  frame    143
+answer_miss              crypto     32  payload     33  frame    175
+answer_hit_unsunk5       crypto    576  payload    577  frame    719
+answer_hit_unsunk4       crypto    576  payload    577  frame    719
+answer_hit_unsunk3       crypto    576  payload    577  frame    719
+answer_hit_unsunk2       crypto    512  payload    513  frame    655
+answer_hit_unsunk1       crypto    448  payload    449  frame    591
+answer_sunk_len5         crypto    192  payload    199  frame    341
+answer_sunk_len4         crypto    160  payload    166  frame    308
+answer_sunk_len3         crypto    128  payload    133  frame    275
+answer_sunk_len2         crypto     96  payload    100  frame    242
+== per-operation timings
+setup_prove            standard  -               19488 B  median    76.776 ms  p95    79.728 ms  (n=200)
+setup_encode           standard  -               19488 B  median     1.482 ms  p95     1.516 ms  (n=200)
+setup_decode           standard  -               19488 B  median     1.514 ms  p95     1.544 ms  (n=200)
+setup_verify           standard  -               19488 B  median    13.446 ms  p95    13.729 ms  (n=200)
+setup_decode+verify    standard  -               19488 B  median    14.960 ms  p95    15.320 ms  (n=200)
+setup_prove            no-touch  -               20544 B  median   351.010 ms  p95   372.035 ms  (n=200)
+setup_encode           no-touch  -               20544 B  median     1.569 ms  p95     1.682 ms  (n=200)
+setup_decode           no-touch  -               20544 B  median     1.599 ms  p95     1.704 ms  (n=200)
+setup_verify           no-touch  -               20544 B  median    44.402 ms  p95    47.400 ms  (n=200)
+setup_decode+verify    no-touch  -               20544 B  median    46.000 ms  p95    49.087 ms  (n=200)
+answer_produce         standard  miss               33 B  median     0.000 ms  p95     0.000 ms  (n=1000)
+answer_decode          standard  miss               33 B  median     0.000 ms  p95     0.000 ms  (n=1000)
+answer_verify          standard  miss               33 B  median     0.018 ms  p95     0.018 ms  (n=1000)
+answer_produce         standard  hit_unsunk5       577 B  median     1.485 ms  p95     1.593 ms  (n=1000)
+answer_decode          standard  hit_unsunk5       577 B  median     0.033 ms  p95     0.036 ms  (n=1000)
+answer_verify          standard  hit_unsunk5       577 B  median     0.406 ms  p95     0.436 ms  (n=1000)
+answer_produce         standard  hit_unsunk4       577 B  median     1.490 ms  p95     1.579 ms  (n=1000)
+answer_decode          standard  hit_unsunk4       577 B  median     0.034 ms  p95     0.036 ms  (n=1000)
+answer_verify          standard  hit_unsunk4       577 B  median     0.387 ms  p95     0.413 ms  (n=1000)
+answer_produce         standard  hit_unsunk3       577 B  median     1.470 ms  p95     1.623 ms  (n=1000)
+answer_decode          standard  hit_unsunk3       577 B  median     0.034 ms  p95     0.037 ms  (n=1000)
+answer_verify          standard  hit_unsunk3       577 B  median     0.362 ms  p95     0.403 ms  (n=1000)
+answer_produce         standard  hit_unsunk2       513 B  median     0.844 ms  p95     0.929 ms  (n=1000)
+answer_decode          standard  hit_unsunk2       513 B  median     0.028 ms  p95     0.031 ms  (n=1000)
+answer_verify          standard  hit_unsunk2       513 B  median     0.252 ms  p95     0.277 ms  (n=1000)
+answer_produce         standard  hit_unsunk1       449 B  median     0.502 ms  p95     0.555 ms  (n=1000)
+answer_decode          standard  hit_unsunk1       449 B  median     0.023 ms  p95     0.026 ms  (n=1000)
+answer_verify          standard  hit_unsunk1       449 B  median     0.180 ms  p95     0.199 ms  (n=1000)
+answer_produce         standard  sunk_len5         199 B  median     0.000 ms  p95     0.000 ms  (n=1000)
+answer_decode          standard  sunk_len5         199 B  median     0.000 ms  p95     0.000 ms  (n=1000)
+answer_verify          standard  sunk_len5         199 B  median     0.107 ms  p95     0.111 ms  (n=1000)
+answer_produce         standard  sunk_len4         166 B  median     0.000 ms  p95     0.000 ms  (n=1000)
+answer_decode          standard  sunk_len4         166 B  median     0.000 ms  p95     0.000 ms  (n=1000)
+answer_verify          standard  sunk_len4         166 B  median     0.091 ms  p95     0.095 ms  (n=1000)
+answer_produce         standard  sunk_len3         133 B  median     0.000 ms  p95     0.000 ms  (n=1000)
+answer_decode          standard  sunk_len3         133 B  median     0.000 ms  p95     0.000 ms  (n=1000)
+answer_verify          standard  sunk_len3         133 B  median     0.072 ms  p95     0.076 ms  (n=1000)
+answer_produce         standard  sunk_len2         100 B  median     0.000 ms  p95     0.000 ms  (n=1000)
+answer_decode          standard  sunk_len2         100 B  median     0.000 ms  p95     0.000 ms  (n=1000)
+answer_verify          standard  sunk_len2         100 B  median     0.053 ms  p95     0.056 ms  (n=1000)
+setup_reject           standard  early_length    19488 B  median     1.582 ms  p95     1.674 ms  (n=200)
+setup_reject           standard  late_bit_proof  19488 B  median    14.220 ms  p95    16.342 ms  (n=200)
+answer_reject          standard  false_miss         33 B  median     0.018 ms  p95     0.018 ms  (n=1000)
+answer_reject          standard  late_range_proof    577 B  median     0.388 ms  p95     0.406 ms  (n=1000)
+== complete games (in-process)
+== networked games
+net game 0 rtt 0 ms: setup 189.1 ms, total 242.5 ms, turn median 0.424 ms p95 2.746 ms
+net game 1 rtt 0 ms: setup 185.3 ms, total 233.0 ms, turn median 0.233 ms p95 2.155 ms
+net game 2 rtt 0 ms: setup 185.9 ms, total 236.3 ms, turn median 0.180 ms p95 2.223 ms
+net game 3 rtt 0 ms: setup 185.7 ms, total 236.2 ms, turn median 0.315 ms p95 2.196 ms
+net game 4 rtt 0 ms: setup 185.0 ms, total 234.3 ms, turn median 0.337 ms p95 2.649 ms
+net game 0 rtt 50 ms: setup 334.5 ms, total 2540.5 ms, turn median 51.017 ms p95 56.576 ms
+net game 1 rtt 50 ms: setup 457.2 ms, total 3467.8 ms, turn median 50.621 ms p95 57.812 ms
+net game 2 rtt 50 ms: setup 394.8 ms, total 3483.0 ms, turn median 50.831 ms p95 55.653 ms
+net game 3 rtt 50 ms: setup 389.2 ms, total 2864.9 ms, turn median 51.287 ms p95 55.728 ms
+net game 4 rtt 50 ms: setup 412.0 ms, total 2750.4 ms, turn median 50.642 ms p95 57.556 ms
+net game 0 rtt 150 ms: setup 628.1 ms, total 7018.6 ms, turn median 150.574 ms p95 153.723 ms
+net game 1 rtt 150 ms: setup 544.1 ms, total 9173.0 ms, turn median 150.520 ms p95 153.386 ms
+net game 2 rtt 150 ms: setup 565.8 ms, total 9544.8 ms, turn median 150.863 ms p95 154.680 ms
+net game 3 rtt 150 ms: setup 555.6 ms, total 7850.2 ms, turn median 151.621 ms p95 160.780 ms
+net game 4 rtt 150 ms: setup 527.6 ms, total 7359.4 ms, turn median 151.445 ms p95 160.891 ms
+net game 0 rtt 50 ms: setup 360.9 ms, total 2624.8 ms, turn median 51.641 ms p95 61.068 ms
+net game 1 rtt 50 ms: setup 343.1 ms, total 3453.9 ms, turn median 51.565 ms p95 61.274 ms
+net game 2 rtt 50 ms: setup 378.6 ms, total 3561.2 ms, turn median 51.503 ms p95 60.823 ms
+net game 3 rtt 50 ms: setup 345.9 ms, total 2933.9 ms, turn median 51.850 ms p95 61.108 ms
+net game 4 rtt 50 ms: setup 355.1 ms, total 2756.9 ms, turn median 51.685 ms p95 61.416 ms
+wrote /home/user/src/provablyfun/zkship/bench/results/p0-20260925T175219Z

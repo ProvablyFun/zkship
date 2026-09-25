@@ -1,0 +1,1214 @@
+{
+  "measure": [
+    {
+      "proof": "commit",
+      "receipt": "composite",
+      "history_len": null,
+      "n": 5,
+      "prove_s": {
+        "median": 3.320129483,
+        "min": 3.122670628,
+        "max": 4.212616593
+      },
+      "verify_first_ms": {
+        "median": 9.690949000000002,
+        "min": 9.568187,
+        "max": 11.376437
+      },
+      "verify_median_ms": {
+        "median": 9.5928635,
+        "min": 9.445637999999999,
+        "max": 14.044595000000001
+      },
+      "journal_B": {
+        "median": 128,
+        "min": 128,
+        "max": 128
+      },
+      "seal_B": {
+        "median": 220904,
+        "min": 220904,
+        "max": 220904
+      },
+      "wire_json_B": {
+        "median": 567348,
+        "min": 567147,
+        "max": 567502
+      },
+      "wire_bincode_B": {
+        "median": 221466,
+        "min": 221466,
+        "max": 221466
+      },
+      "segments": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "user_cycles": {
+        "median": 14033,
+        "min": 14033,
+        "max": 14033
+      },
+      "total_cycles": {
+        "median": 65536,
+        "min": 65536,
+        "max": 65536
+      },
+      "time_maxrss_kB": {
+        "median": 615900,
+        "min": 614468,
+        "max": 616464
+      },
+      "maxrss_children_kB": {
+        "median": 615900,
+        "min": 614468,
+        "max": 616464
+      },
+      "process_wall_s": {
+        "median": 3.57,
+        "min": 3.33,
+        "max": 4.52
+      },
+      "process_user_s": {
+        "median": 70.55,
+        "min": 69.06,
+        "max": 72.93
+      }
+    },
+    {
+      "proof": "shot",
+      "receipt": "composite",
+      "history_len": 0,
+      "n": 5,
+      "prove_s": {
+        "median": 3.427564373,
+        "min": 3.175068489,
+        "max": 3.953054422
+      },
+      "verify_first_ms": {
+        "median": 9.730592,
+        "min": 9.645192999999999,
+        "max": 23.035585
+      },
+      "verify_median_ms": {
+        "median": 9.852668,
+        "min": 9.446278,
+        "max": 10.0732285
+      },
+      "journal_B": {
+        "median": 152,
+        "min": 152,
+        "max": 152
+      },
+      "seal_B": {
+        "median": 220904,
+        "min": 220904,
+        "max": 220904
+      },
+      "wire_json_B": {
+        "median": 567534,
+        "min": 567322,
+        "max": 567727
+      },
+      "wire_bincode_B": {
+        "median": 221514,
+        "min": 221514,
+        "max": 221514
+      },
+      "segments": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "user_cycles": {
+        "median": 20062,
+        "min": 20062,
+        "max": 20062
+      },
+      "total_cycles": {
+        "median": 65536,
+        "min": 65536,
+        "max": 65536
+      },
+      "time_maxrss_kB": {
+        "median": 617112,
+        "min": 615632,
+        "max": 617972
+      },
+      "maxrss_children_kB": {
+        "median": 617112,
+        "min": 615632,
+        "max": 617972
+      },
+      "process_wall_s": {
+        "median": 3.65,
+        "min": 3.39,
+        "max": 4.18
+      },
+      "process_user_s": {
+        "median": 69.72,
+        "min": 65.09,
+        "max": 75.28
+      }
+    },
+    {
+      "proof": "shot",
+      "receipt": "composite",
+      "history_len": 25,
+      "n": 5,
+      "prove_s": {
+        "median": 6.810164242,
+        "min": 6.158619964,
+        "max": 8.110282577
+      },
+      "verify_first_ms": {
+        "median": 10.295128,
+        "min": 10.015239000000001,
+        "max": 21.857574
+      },
+      "verify_median_ms": {
+        "median": 10.5928015,
+        "min": 10.311212000000001,
+        "max": 21.404469499999998
+      },
+      "journal_B": {
+        "median": 352,
+        "min": 352,
+        "max": 352
+      },
+      "seal_B": {
+        "median": 243944,
+        "min": 243944,
+        "max": 243944
+      },
+      "wire_json_B": {
+        "median": 628384,
+        "min": 628337,
+        "max": 628560
+      },
+      "wire_bincode_B": {
+        "median": 244954,
+        "min": 244954,
+        "max": 244954
+      },
+      "segments": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "user_cycles": {
+        "median": 40049,
+        "min": 40049,
+        "max": 40049
+      },
+      "total_cycles": {
+        "median": 131072,
+        "min": 131072,
+        "max": 131072
+      },
+      "time_maxrss_kB": {
+        "median": 1213660,
+        "min": 1213100,
+        "max": 1213732
+      },
+      "maxrss_children_kB": {
+        "median": 1213660,
+        "min": 1213100,
+        "max": 1213732
+      },
+      "process_wall_s": {
+        "median": 7.11,
+        "min": 6.38,
+        "max": 8.58
+      },
+      "process_user_s": {
+        "median": 139.3,
+        "min": 137.83,
+        "max": 141.81
+      }
+    },
+    {
+      "proof": "shot",
+      "receipt": "composite",
+      "history_len": 50,
+      "n": 5,
+      "prove_s": {
+        "median": 6.527280869,
+        "min": 6.147772212,
+        "max": 16.394027819
+      },
+      "verify_first_ms": {
+        "median": 10.537849999999999,
+        "min": 9.995304,
+        "max": 15.263228
+      },
+      "verify_median_ms": {
+        "median": 10.3714485,
+        "min": 10.329398000000001,
+        "max": 15.584066
+      },
+      "journal_B": {
+        "median": 552,
+        "min": 552,
+        "max": 552
+      },
+      "seal_B": {
+        "median": 243944,
+        "min": 243944,
+        "max": 243944
+      },
+      "wire_json_B": {
+        "median": 629404,
+        "min": 629256,
+        "max": 629517
+      },
+      "wire_bincode_B": {
+        "median": 245354,
+        "min": 245354,
+        "max": 245354
+      },
+      "segments": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "user_cycles": {
+        "median": 59803,
+        "min": 59803,
+        "max": 59803
+      },
+      "total_cycles": {
+        "median": 131072,
+        "min": 131072,
+        "max": 131072
+      },
+      "time_maxrss_kB": {
+        "median": 1214744,
+        "min": 1214232,
+        "max": 1216320
+      },
+      "maxrss_children_kB": {
+        "median": 1214744,
+        "min": 1214232,
+        "max": 1216320
+      },
+      "process_wall_s": {
+        "median": 6.75,
+        "min": 6.37,
+        "max": 16.74
+      },
+      "process_user_s": {
+        "median": 138.02,
+        "min": 136.67,
+        "max": 152.64
+      }
+    },
+    {
+      "proof": "shot",
+      "receipt": "composite",
+      "history_len": 99,
+      "n": 5,
+      "prove_s": {
+        "median": 6.534131761,
+        "min": 6.341032838,
+        "max": 9.761997968
+      },
+      "verify_first_ms": {
+        "median": 10.434084,
+        "min": 9.927878,
+        "max": 11.723141
+      },
+      "verify_median_ms": {
+        "median": 10.3769235,
+        "min": 10.0971475,
+        "max": 11.467045
+      },
+      "journal_B": {
+        "median": 944,
+        "min": 944,
+        "max": 944
+      },
+      "seal_B": {
+        "median": 243944,
+        "min": 243944,
+        "max": 243944
+      },
+      "wire_json_B": {
+        "median": 630661,
+        "min": 630519,
+        "max": 631128
+      },
+      "wire_bincode_B": {
+        "median": 246138,
+        "min": 246138,
+        "max": 246138
+      },
+      "segments": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "user_cycles": {
+        "median": 98593,
+        "min": 98593,
+        "max": 98593
+      },
+      "total_cycles": {
+        "median": 131072,
+        "min": 131072,
+        "max": 131072
+      },
+      "time_maxrss_kB": {
+        "median": 1218460,
+        "min": 1218016,
+        "max": 1219788
+      },
+      "maxrss_children_kB": {
+        "median": 1218460,
+        "min": 1218016,
+        "max": 1219788
+      },
+      "process_wall_s": {
+        "median": 6.77,
+        "min": 6.57,
+        "max": 9.99
+      },
+      "process_user_s": {
+        "median": 141.22,
+        "min": 133.65,
+        "max": 142.95
+      }
+    },
+    {
+      "proof": "commit",
+      "receipt": "succinct",
+      "history_len": null,
+      "n": 5,
+      "prove_s": {
+        "median": 9.127757956,
+        "min": 8.280735742,
+        "max": 9.492461391
+      },
+      "verify_first_ms": {
+        "median": 9.716518,
+        "min": 9.436619,
+        "max": 10.252192
+      },
+      "verify_median_ms": {
+        "median": 9.835228,
+        "min": 9.607156499999999,
+        "max": 10.2124755
+      },
+      "journal_B": {
+        "median": 128,
+        "min": 128,
+        "max": 128
+      },
+      "seal_B": {
+        "median": 222668,
+        "min": 222668,
+        "max": 222668
+      },
+      "wire_json_B": {
+        "median": 583266,
+        "min": 583094,
+        "max": 583586
+      },
+      "wire_bincode_B": {
+        "median": 223482,
+        "min": 223482,
+        "max": 223482
+      },
+      "segments": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "user_cycles": {
+        "median": 14033,
+        "min": 14033,
+        "max": 14033
+      },
+      "total_cycles": {
+        "median": 65536,
+        "min": 65536,
+        "max": 65536
+      },
+      "time_maxrss_kB": {
+        "median": 1460728,
+        "min": 1460348,
+        "max": 1461984
+      },
+      "maxrss_children_kB": {
+        "median": 1460728,
+        "min": 1460348,
+        "max": 1461984
+      },
+      "process_wall_s": {
+        "median": 9.34,
+        "min": 8.49,
+        "max": 9.72
+      },
+      "process_user_s": {
+        "median": 177.14,
+        "min": 170.1,
+        "max": 187.54
+      }
+    },
+    {
+      "proof": "shot",
+      "receipt": "succinct",
+      "history_len": 0,
+      "n": 5,
+      "prove_s": {
+        "median": 9.067509098,
+        "min": 8.151913614,
+        "max": 9.698246166
+      },
+      "verify_first_ms": {
+        "median": 9.946593,
+        "min": 9.333367,
+        "max": 10.244365
+      },
+      "verify_median_ms": {
+        "median": 9.8969545,
+        "min": 9.572697,
+        "max": 10.5486435
+      },
+      "journal_B": {
+        "median": 152,
+        "min": 152,
+        "max": 152
+      },
+      "seal_B": {
+        "median": 222668,
+        "min": 222668,
+        "max": 222668
+      },
+      "wire_json_B": {
+        "median": 583282,
+        "min": 582978,
+        "max": 583352
+      },
+      "wire_bincode_B": {
+        "median": 223530,
+        "min": 223530,
+        "max": 223530
+      },
+      "segments": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "user_cycles": {
+        "median": 20062,
+        "min": 20062,
+        "max": 20062
+      },
+      "total_cycles": {
+        "median": 65536,
+        "min": 65536,
+        "max": 65536
+      },
+      "time_maxrss_kB": {
+        "median": 1460812,
+        "min": 1460120,
+        "max": 1461724
+      },
+      "maxrss_children_kB": {
+        "median": 1460812,
+        "min": 1460120,
+        "max": 1461724
+      },
+      "process_wall_s": {
+        "median": 9.27,
+        "min": 8.36,
+        "max": 9.92
+      },
+      "process_user_s": {
+        "median": 179.06,
+        "min": 174.2,
+        "max": 186.68
+      }
+    },
+    {
+      "proof": "shot",
+      "receipt": "succinct",
+      "history_len": 25,
+      "n": 5,
+      "prove_s": {
+        "median": 12.465912015,
+        "min": 11.012700441,
+        "max": 14.606537238
+      },
+      "verify_first_ms": {
+        "median": 9.960008,
+        "min": 9.574957,
+        "max": 11.485273000000001
+      },
+      "verify_median_ms": {
+        "median": 9.755599499999999,
+        "min": 9.647397000000002,
+        "max": 11.530175499999999
+      },
+      "journal_B": {
+        "median": 352,
+        "min": 352,
+        "max": 352
+      },
+      "seal_B": {
+        "median": 222668,
+        "min": 222668,
+        "max": 222668
+      },
+      "wire_json_B": {
+        "median": 584157,
+        "min": 583824,
+        "max": 584337
+      },
+      "wire_bincode_B": {
+        "median": 223930,
+        "min": 223930,
+        "max": 223930
+      },
+      "segments": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "user_cycles": {
+        "median": 40049,
+        "min": 40049,
+        "max": 40049
+      },
+      "total_cycles": {
+        "median": 131072,
+        "min": 131072,
+        "max": 131072
+      },
+      "time_maxrss_kB": {
+        "median": 1462180,
+        "min": 1461728,
+        "max": 1462428
+      },
+      "maxrss_children_kB": {
+        "median": 1462180,
+        "min": 1461728,
+        "max": 1462428
+      },
+      "process_wall_s": {
+        "median": 12.72,
+        "min": 11.23,
+        "max": 14.82
+      },
+      "process_user_s": {
+        "median": 241.98,
+        "min": 239.01,
+        "max": 256.24
+      }
+    },
+    {
+      "proof": "shot",
+      "receipt": "succinct",
+      "history_len": 50,
+      "n": 5,
+      "prove_s": {
+        "median": 12.694037644,
+        "min": 11.638233609,
+        "max": 15.975742467
+      },
+      "verify_first_ms": {
+        "median": 9.694730999999999,
+        "min": 9.438623,
+        "max": 10.044082
+      },
+      "verify_median_ms": {
+        "median": 9.811055499999998,
+        "min": 9.586377,
+        "max": 10.159688
+      },
+      "journal_B": {
+        "median": 552,
+        "min": 552,
+        "max": 552
+      },
+      "seal_B": {
+        "median": 222668,
+        "min": 222668,
+        "max": 222668
+      },
+      "wire_json_B": {
+        "median": 584929,
+        "min": 584620,
+        "max": 585112
+      },
+      "wire_bincode_B": {
+        "median": 224330,
+        "min": 224330,
+        "max": 224330
+      },
+      "segments": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "user_cycles": {
+        "median": 59803,
+        "min": 59803,
+        "max": 59803
+      },
+      "total_cycles": {
+        "median": 131072,
+        "min": 131072,
+        "max": 131072
+      },
+      "time_maxrss_kB": {
+        "median": 1461968,
+        "min": 1461232,
+        "max": 1462968
+      },
+      "maxrss_children_kB": {
+        "median": 1461968,
+        "min": 1461232,
+        "max": 1462968
+      },
+      "process_wall_s": {
+        "median": 12.91,
+        "min": 11.85,
+        "max": 16.19
+      },
+      "process_user_s": {
+        "median": 247.87,
+        "min": 242.43,
+        "max": 254.91
+      }
+    },
+    {
+      "proof": "shot",
+      "receipt": "succinct",
+      "history_len": 99,
+      "n": 5,
+      "prove_s": {
+        "median": 11.910207107,
+        "min": 11.437371415,
+        "max": 19.406571816
+      },
+      "verify_first_ms": {
+        "median": 10.228521,
+        "min": 9.477806,
+        "max": 16.447593
+      },
+      "verify_median_ms": {
+        "median": 9.825472999999999,
+        "min": 9.6863505,
+        "max": 10.3117725
+      },
+      "journal_B": {
+        "median": 944,
+        "min": 944,
+        "max": 944
+      },
+      "seal_B": {
+        "median": 222668,
+        "min": 222668,
+        "max": 222668
+      },
+      "wire_json_B": {
+        "median": 586444,
+        "min": 586237,
+        "max": 586621
+      },
+      "wire_bincode_B": {
+        "median": 225114,
+        "min": 225114,
+        "max": 225114
+      },
+      "segments": {
+        "median": 1,
+        "min": 1,
+        "max": 1
+      },
+      "user_cycles": {
+        "median": 98593,
+        "min": 98593,
+        "max": 98593
+      },
+      "total_cycles": {
+        "median": 131072,
+        "min": 131072,
+        "max": 131072
+      },
+      "time_maxrss_kB": {
+        "median": 1462164,
+        "min": 1461464,
+        "max": 1462264
+      },
+      "maxrss_children_kB": {
+        "median": 1462164,
+        "min": 1461464,
+        "max": 1462264
+      },
+      "process_wall_s": {
+        "median": 12.12,
+        "min": 11.65,
+        "max": 19.67
+      },
+      "process_user_s": {
+        "median": 250.75,
+        "min": 244.09,
+        "max": 251.44
+      }
+    }
+  ],
+  "upstream_bench": [
+    {
+      "proof": "commit",
+      "receipt": "composite",
+      "history_len": 0,
+      "n": 5,
+      "prove_s": {
+        "median": 3.6,
+        "min": 3.39,
+        "max": 4.11
+      },
+      "verify_ms": {
+        "median": 10.2,
+        "min": 9.9,
+        "max": 12.9
+      },
+      "journal_B": {
+        "median": 128.0,
+        "min": 128.0,
+        "max": 128.0
+      },
+      "seal_B": {
+        "median": 220904.0,
+        "min": 220904.0,
+        "max": 220904.0
+      },
+      "wire_json_B": {
+        "median": 567352.0,
+        "min": 567255.0,
+        "max": 567701.0
+      },
+      "user_cycles": {
+        "median": 14033.0,
+        "min": 14033.0,
+        "max": 14033.0
+      },
+      "total_cycles": {
+        "median": 65536.0,
+        "min": 65536.0,
+        "max": 65536.0
+      }
+    },
+    {
+      "proof": "shot",
+      "receipt": "composite",
+      "history_len": 0,
+      "n": 5,
+      "prove_s": {
+        "median": 3.46,
+        "min": 3.16,
+        "max": 3.88
+      },
+      "verify_ms": {
+        "median": 10.4,
+        "min": 9.8,
+        "max": 10.8
+      },
+      "journal_B": {
+        "median": 152.0,
+        "min": 152.0,
+        "max": 152.0
+      },
+      "seal_B": {
+        "median": 220904.0,
+        "min": 220904.0,
+        "max": 220904.0
+      },
+      "wire_json_B": {
+        "median": 567633.0,
+        "min": 567355.0,
+        "max": 567677.0
+      },
+      "user_cycles": {
+        "median": 20062.0,
+        "min": 20062.0,
+        "max": 20062.0
+      },
+      "total_cycles": {
+        "median": 65536.0,
+        "min": 65536.0,
+        "max": 65536.0
+      }
+    },
+    {
+      "proof": "shot",
+      "receipt": "composite",
+      "history_len": 25,
+      "n": 5,
+      "prove_s": {
+        "median": 7.12,
+        "min": 6.46,
+        "max": 14.36
+      },
+      "verify_ms": {
+        "median": 10.9,
+        "min": 10.7,
+        "max": 20.9
+      },
+      "journal_B": {
+        "median": 352.0,
+        "min": 352.0,
+        "max": 352.0
+      },
+      "seal_B": {
+        "median": 243944.0,
+        "min": 243944.0,
+        "max": 243944.0
+      },
+      "wire_json_B": {
+        "median": 628480.0,
+        "min": 628162.0,
+        "max": 628579.0
+      },
+      "user_cycles": {
+        "median": 40049.0,
+        "min": 40049.0,
+        "max": 40049.0
+      },
+      "total_cycles": {
+        "median": 131072.0,
+        "min": 131072.0,
+        "max": 131072.0
+      }
+    },
+    {
+      "proof": "shot",
+      "receipt": "composite",
+      "history_len": 50,
+      "n": 5,
+      "prove_s": {
+        "median": 7.41,
+        "min": 6.43,
+        "max": 13.77
+      },
+      "verify_ms": {
+        "median": 10.8,
+        "min": 10.2,
+        "max": 12.1
+      },
+      "journal_B": {
+        "median": 552.0,
+        "min": 552.0,
+        "max": 552.0
+      },
+      "seal_B": {
+        "median": 243944.0,
+        "min": 243944.0,
+        "max": 243944.0
+      },
+      "wire_json_B": {
+        "median": 629211.0,
+        "min": 628930.0,
+        "max": 629472.0
+      },
+      "user_cycles": {
+        "median": 59803.0,
+        "min": 59803.0,
+        "max": 59803.0
+      },
+      "total_cycles": {
+        "median": 131072.0,
+        "min": 131072.0,
+        "max": 131072.0
+      }
+    },
+    {
+      "proof": "shot",
+      "receipt": "composite",
+      "history_len": 99,
+      "n": 5,
+      "prove_s": {
+        "median": 7.25,
+        "min": 6.7,
+        "max": 8.79
+      },
+      "verify_ms": {
+        "median": 11.3,
+        "min": 10.3,
+        "max": 20.1
+      },
+      "journal_B": {
+        "median": 944.0,
+        "min": 944.0,
+        "max": 944.0
+      },
+      "seal_B": {
+        "median": 243944.0,
+        "min": 243944.0,
+        "max": 243944.0
+      },
+      "wire_json_B": {
+        "median": 630720.0,
+        "min": 630639.0,
+        "max": 631009.0
+      },
+      "user_cycles": {
+        "median": 98593.0,
+        "min": 98593.0,
+        "max": 98593.0
+      },
+      "total_cycles": {
+        "median": 131072.0,
+        "min": 131072.0,
+        "max": 131072.0
+      }
+    },
+    {
+      "proof": "commit",
+      "receipt": "succinct",
+      "history_len": 0,
+      "n": 5,
+      "prove_s": {
+        "median": 9.59,
+        "min": 9.02,
+        "max": 10.23
+      },
+      "verify_ms": {
+        "median": 9.9,
+        "min": 9.5,
+        "max": 10.4
+      },
+      "journal_B": {
+        "median": 128.0,
+        "min": 128.0,
+        "max": 128.0
+      },
+      "seal_B": {
+        "median": 222668.0,
+        "min": 222668.0,
+        "max": 222668.0
+      },
+      "wire_json_B": {
+        "median": 583142.0,
+        "min": 583069.0,
+        "max": 583239.0
+      },
+      "user_cycles": {
+        "median": 14033.0,
+        "min": 14033.0,
+        "max": 14033.0
+      },
+      "total_cycles": {
+        "median": 65536.0,
+        "min": 65536.0,
+        "max": 65536.0
+      }
+    },
+    {
+      "proof": "shot",
+      "receipt": "succinct",
+      "history_len": 0,
+      "n": 5,
+      "prove_s": {
+        "median": 9.02,
+        "min": 8.8,
+        "max": 11.81
+      },
+      "verify_ms": {
+        "median": 10.5,
+        "min": 9.5,
+        "max": 11.2
+      },
+      "journal_B": {
+        "median": 152.0,
+        "min": 152.0,
+        "max": 152.0
+      },
+      "seal_B": {
+        "median": 222668.0,
+        "min": 222668.0,
+        "max": 222668.0
+      },
+      "wire_json_B": {
+        "median": 583337.0,
+        "min": 583147.0,
+        "max": 583399.0
+      },
+      "user_cycles": {
+        "median": 20062.0,
+        "min": 20062.0,
+        "max": 20062.0
+      },
+      "total_cycles": {
+        "median": 65536.0,
+        "min": 65536.0,
+        "max": 65536.0
+      }
+    },
+    {
+      "proof": "shot",
+      "receipt": "succinct",
+      "history_len": 25,
+      "n": 5,
+      "prove_s": {
+        "median": 13.43,
+        "min": 11.75,
+        "max": 14.81
+      },
+      "verify_ms": {
+        "median": 12.3,
+        "min": 9.9,
+        "max": 18.9
+      },
+      "journal_B": {
+        "median": 352.0,
+        "min": 352.0,
+        "max": 352.0
+      },
+      "seal_B": {
+        "median": 222668.0,
+        "min": 222668.0,
+        "max": 222668.0
+      },
+      "wire_json_B": {
+        "median": 584091.0,
+        "min": 584018.0,
+        "max": 584323.0
+      },
+      "user_cycles": {
+        "median": 40049.0,
+        "min": 40049.0,
+        "max": 40049.0
+      },
+      "total_cycles": {
+        "median": 131072.0,
+        "min": 131072.0,
+        "max": 131072.0
+      }
+    },
+    {
+      "proof": "shot",
+      "receipt": "succinct",
+      "history_len": 50,
+      "n": 5,
+      "prove_s": {
+        "median": 13.0,
+        "min": 12.06,
+        "max": 16.67
+      },
+      "verify_ms": {
+        "median": 10.6,
+        "min": 10.0,
+        "max": 10.8
+      },
+      "journal_B": {
+        "median": 552.0,
+        "min": 552.0,
+        "max": 552.0
+      },
+      "seal_B": {
+        "median": 222668.0,
+        "min": 222668.0,
+        "max": 222668.0
+      },
+      "wire_json_B": {
+        "median": 584727.0,
+        "min": 584555.0,
+        "max": 585166.0
+      },
+      "user_cycles": {
+        "median": 59803.0,
+        "min": 59803.0,
+        "max": 59803.0
+      },
+      "total_cycles": {
+        "median": 131072.0,
+        "min": 131072.0,
+        "max": 131072.0
+      }
+    },
+    {
+      "proof": "shot",
+      "receipt": "succinct",
+      "history_len": 99,
+      "n": 5,
+      "prove_s": {
+        "median": 12.86,
+        "min": 11.88,
+        "max": 13.9
+      },
+      "verify_ms": {
+        "median": 10.1,
+        "min": 9.6,
+        "max": 10.8
+      },
+      "journal_B": {
+        "median": 944.0,
+        "min": 944.0,
+        "max": 944.0
+      },
+      "seal_B": {
+        "median": 222668.0,
+        "min": 222668.0,
+        "max": 222668.0
+      },
+      "wire_json_B": {
+        "median": 586358.0,
+        "min": 586311.0,
+        "max": 586729.0
+      },
+      "user_cycles": {
+        "median": 98593.0,
+        "min": 98593.0,
+        "max": 98593.0
+      },
+      "total_cycles": {
+        "median": 131072.0,
+        "min": 131072.0,
+        "max": 131072.0
+      }
+    }
+  ],
+  "meta": {
+    "started_utc": "2026-09-25T18:38:30.185598+00:00",
+    "repetitions": 5,
+    "configs": [
+      "commit:composite:0",
+      "shot:composite:0",
+      "shot:composite:25",
+      "shot:composite:50",
+      "shot:composite:99",
+      "commit:succinct:0",
+      "shot:succinct:0",
+      "shot:succinct:25",
+      "shot:succinct:50",
+      "shot:succinct:99"
+    ],
+    "verify_reps": 20,
+    "upstream_reps": 5,
+    "upstream_commit": "a8fdd56323d60821325fd5f8a393b1f3ba89ce45",
+    "upstream_dirty": "",
+    "risc0_zkvm_crate": "3.0.5 (Cargo.lock)",
+    "r0vm_version": "risc0-r0vm 3.0.5",
+    "r0vm_path": "/home/user/src/provablyfun/baselines/risc0-battleship/risc0-home/extensions/v3.0.5-cargo-risczero-x86_64-unknown-linux-gnu/r0vm",
+    "risc0_guest_rustc": "rustc 1.97.0-dev (e638c6cfe 2026-07-15)",
+    "host_rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "rzup": "rzup 0.5.0",
+    "RAYON_NUM_THREADS": null,
+    "CPUSET": null,
+    "cpu_model": "Intel(R) Core(TM) i7-14700K",
+    "nproc": "28",
+    "affinity_nproc": "28",
+    "governor": "powersave",
+    "no_turbo_or_boost": "0",
+    "mem_total": "MemTotal:       131631216 kB",
+    "kernel": "7.0.0-31-generic",
+    "loadavg_at_start": "5.25 5.10 6.39 5/5615 1987990",
+    "image_ids_measure": "pub const COMMIT_BOARD_ID: [u32; 8] = [2182529437, 879118796, 2529966677, 2035984361, 3859045168, 3774628258, 2862403823, 2498523687];\npub const PROVE_SHOT_ID: [u32; 8] = [1171634298, 1757719606, 2413444373, 4039494512, 3736600589, 2239547093, 1996593187, 2167643329];",
+    "image_ids_upstream": "pub const COMMIT_BOARD_ID: [u32; 8] = [2182529437, 879118796, 2529966677, 2035984361, 3859045168, 3774628258, 2862403823, 2498523687];\npub const PROVE_SHOT_ID: [u32; 8] = [1171634298, 1757719606, 2413444373, 4039494512, 3736600589, 2239547093, 1996593187, 2167643329];"
+  }
+}

@@ -1,0 +1,16 @@
+message,crypto_bytes,payload_bytes,frame_bytes
+setup_standard,19488,19488,19630
+setup_no-touch,20544,20544,20686
+hello_unframed,0,162,162
+coin_message,32,32,174
+shot,1,1,143
+answer_miss,32,33,175
+answer_hit_unsunk5,576,577,719
+answer_hit_unsunk4,576,577,719
+answer_hit_unsunk3,576,577,719
+answer_hit_unsunk2,512,513,655
+answer_hit_unsunk1,448,449,591
+answer_sunk_len5,192,199,341
+answer_sunk_len4,160,166,308
+answer_sunk_len3,128,133,275
+answer_sunk_len2,96,100,242
