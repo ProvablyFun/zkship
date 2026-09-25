@@ -1,0 +1,27 @@
+{
+  "shot_false_miss": {
+    "claim": "shot [2,4] on bob board reported as MISS although it hits ship #5 at (1,4) horizontal",
+    "honest_wasm": "rejected: Error: Assert Failed. Error in template shot_11 line: 63",
+    "forged": {
+      "publicSignals": [
+        "9471637200097742382902636864868688936204858339312882491666128290891645449457",
+        "2",
+        "4",
+        "0"
+      ],
+      "snarkjs_verify": true,
+      "solidity_verifyProof": true
+    }
+  },
+  "board_overlapping": {
+    "claim": "all 5 ships placed at (0,0) horizontal, i.e. fully overlapping (5 occupied cells instead of 17)",
+    "honest_wasm": "rejected: Error: Assert Failed. Error in template PlaceShip_13 line: 51",
+    "forged": {
+      "publicSignals": [
+        "9816536739597599560124040845753544799020326826326335983002750401162292041905"
+      ],
+      "snarkjs_verify": true,
+      "solidity_verifyProof": true
+    }
+  }
+}

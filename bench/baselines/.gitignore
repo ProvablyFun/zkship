@@ -1,0 +1,13 @@
+upstream/
+tools/bin/
+tools/local/
+tools/rapidsnark/
+tools/src/
+risc0-home/
+node_modules/
+target/
+**/soundness/build/
+harness/results/
+harness/smoke/
+results/
+smoke/

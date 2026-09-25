@@ -1,0 +1,26 @@
+# Standalone measurement program for the upstream RISC Zero Battleship
+# (hadigghazi/Ledger-Free-Trustless-Battleship @ a8fdd56). Depends on the
+# UNMODIFIED upstream crates by path; its own workspace so upstream is untouched.
+[package]
+name = "r0bs-measure"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+methods = { path = "../upstream/methods" }
+host = { path = "../upstream/host" }
+zk-battleship-core = { path = "../upstream/core" }
+# Same feature set as upstream host: no `prove` feature, so default_prover()
+# is the ExternalProver (r0vm subprocess), exactly as in the upstream bench.
+risc0-zkvm = { version = "=3.0.5", features = ["disable-dev-mode"] }
+serde_json = "1.0"
+bincode = "1.3"
+rand = "0.8"
+anyhow = "1"
+libc = "0.2"
+
+[profile.release.build-override]
+opt-level = 3

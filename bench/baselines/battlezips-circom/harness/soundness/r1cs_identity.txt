@@ -1,0 +1,2 @@
+board: R1CS identical (3e8f6bebf93737f808b4cc46c3e6b098139fd5c2caeffa9d9ae26123bbe2f126)
+shot: R1CS identical (d42f2925e4c9ae648d3bd47423a19987bf1b36b500a9b93c494ac3f26faf7b1b)
