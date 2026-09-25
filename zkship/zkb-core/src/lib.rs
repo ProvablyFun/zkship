@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod answers;
 pub mod bp;
 pub mod fleet;
 pub mod game;
