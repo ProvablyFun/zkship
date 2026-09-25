@@ -2,3 +2,4 @@
 
 pub mod bit;
 pub mod schnorr;
+pub mod square;
