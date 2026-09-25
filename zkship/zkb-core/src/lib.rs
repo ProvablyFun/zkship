@@ -11,6 +11,7 @@ pub mod game;
 pub mod openings;
 pub mod params;
 pub mod pedersen;
+pub mod setup;
 pub mod sigma;
 pub mod wf;
 
