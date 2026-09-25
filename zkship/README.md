@@ -1,10 +1,9 @@
 # zkship: Zero-Knowledge Battleship reference implementation (Rust)
 
-Authority: `../docs/BBCON2026_ZK_Battleship_Extended_Abstract.pdf` (the
-construction: per-ship indicator commitments, moment-equation straightness,
-aggregated Bulletproofs, not-sunk range proofs). `../docs/zk-battleship.tex`
-describes an earlier position-enumeration construction that this code no
-longer implements. Wire formats, domain strings, and transcript order are
+Authority: `../docs/zk-battleship.pdf` (source `../docs/zk-battleship.tex`),
+the long version of the BBCON 2026 extended abstract
+(`../docs/BBCON2026_ZK_Battleship_Extended_Abstract.pdf`).
+Wire formats, domain strings, and transcript order are
 specified by the code and pinned by `vectors/`.
 
 Not independently audited. Do not use for meaningful stakes.
