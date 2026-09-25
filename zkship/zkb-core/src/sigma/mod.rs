@@ -1,5 +1,3 @@
-//! Single-instance Sigma protocols (paper §2.4); Fiat-Shamir and composition live in `wf`.
+//! Single-instance Sigma protocols; Fiat-Shamir and composition live in `setup`.
 
-pub mod bit;
-pub mod schnorr;
 pub mod square;

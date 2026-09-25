@@ -50,7 +50,7 @@ fn privacy_coupling() {
     let xi = Scalar::from_bytes_mod_order([0x42; 32]);
     let h = RistrettoPoint::hash_from_bytes::<Sha512>(b"zkbattleship/test-only/coupling-H");
     let g = xi * h;
-    let params = Parameters::paper_from_test_generators(g, h, Rules::Standard);
+    let params = Parameters::from_test_generators(g, h, Rules::Standard);
 
     let fleets = [fleet_a(), fleet_a_moved()];
     let bits = [fleets[0].ship_bits(), fleets[1].ship_bits()];
