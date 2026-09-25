@@ -85,6 +85,7 @@ pub fn run(out: &mut Out, cfg: &Config) {
         setup_ops(out, &mut raw, cfg, rules);
     }
     answer_ops(out, &mut raw, cfg);
+    rejection_ops(out, &mut raw, cfg);
     for (key, ms) in &raw.rows {
         out.line(
             "ops_raw.csv",
@@ -384,5 +385,96 @@ pub fn sizes(out: &mut Out) {
             _ => len - 1,
         };
         row(out, &format!("answer_{variant}"), crypto, len);
+    }
+}
+
+/// Flips the lowest bit of the scalar ending `from_end` bytes before the end
+/// of `bytes`; the result stays canonical for any scalar below `2^252`.
+fn flip_scalar(bytes: &mut [u8], from_end: usize) {
+    let at = bytes.len() - from_end;
+    bytes[at] ^= 1;
+}
+
+/// What refusing a forged message costs the receiver: an early failure (first
+/// check) and a late one (the last check, so the whole verification runs).
+fn rejection_ops(out: &mut Out, raw: &mut Series, cfg: &Config) {
+    let params = Parameters::standard();
+    let mut rng = ChaCha20Rng::seed_from_u64(0x4e7);
+    let fleet = Fleet::random(&mut rng, Rules::Standard);
+    let msg = setup::prove(params, &ID, &SID, &fleet, &blinders(&mut rng)).unwrap();
+
+    let mut early = msg.clone();
+    early.length_openings[0] += Scalar::ONE;
+    let mut late = msg.encode();
+    flip_scalar(&mut late, 32); // last scalar of the bit proof
+    let late = SetupMessage::decode(&late, Rules::Standard).unwrap();
+    for (variant, forged) in [("early_length", &early), ("late_bit_proof", &late)] {
+        let mut samples = Vec::new();
+        for i in 0..cfg.warmup + cfg.setup_iters {
+            let start = Instant::now();
+            let result = setup::verify(params, &ID, &SID, forged);
+            let t = ms(start);
+            assert!(result.is_err());
+            if i >= cfg.warmup {
+                samples.push(t);
+            }
+        }
+        record(
+            out,
+            raw,
+            "setup_reject",
+            "standard",
+            variant,
+            msg.encode().len(),
+            &samples,
+        );
+    }
+
+    let ctx = AnswerContext {
+        defender_id: &ID,
+        sid: &SID,
+    };
+    let mut state = State::new(params, &fleet, &mut rng);
+    let target = fleet.cells(0)[0];
+    state.register(target);
+    let honest = answers::answer_shot(params, &ctx, &state.board, &state.secrets, target, &mut rng);
+    let ShotAnswer::Hit { rho, .. } = &honest else {
+        panic!("first cell of a ship is a hit")
+    };
+    let false_miss = ShotAnswer::Miss { rho: *rho };
+    let mut bytes = honest.encode();
+    flip_scalar(&mut bytes, 32); // last scalar of the not-sunk proof
+    let bad_proof = ShotAnswer::decode(&bytes, state.board.unsunk_count()).unwrap();
+    for (variant, forged) in [
+        ("false_miss", &false_miss),
+        ("late_range_proof", &bad_proof),
+    ] {
+        let mut samples = Vec::new();
+        for i in 0..cfg.warmup + cfg.answer_iters {
+            let start = Instant::now();
+            let result = answers::verify_answer(
+                params,
+                &ctx,
+                state.verified.ship_cells(),
+                state.verified.cell_commitments(),
+                &state.board,
+                target,
+                forged,
+            );
+            let t = ms(start);
+            assert!(result.is_err());
+            if i >= cfg.warmup {
+                samples.push(t);
+            }
+        }
+        record(
+            out,
+            raw,
+            "answer_reject",
+            "standard",
+            variant,
+            forged.encode().len(),
+            &samples,
+        );
     }
 }
